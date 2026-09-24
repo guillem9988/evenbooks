@@ -1,0 +1,40 @@
+{
+  "name": "matchinvoice",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bank transaction and invoice reconciliation for freelancers and SMEs.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1139.0",
+    "@fastify/multipart": "^9.4.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "bullmq": "^6.3.8",
+    "dotenv": "^18.0.3",
+    "fastify": "^5.12.5",
+    "ioredis": "^6.0.0",
+    "openai": "^7.23.0",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.23.0",
+    "unpdf": "^1.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/pg": "^8.23.1",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

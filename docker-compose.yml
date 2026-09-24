@@ -1,0 +1,83 @@
+# Local infrastructure for MatchInvoice.
+# Host ports are intentionally uncommon: Postgres 54329, Redis 63799,
+# MinIO API 59000, MinIO console 59001.
+# pg_trgm does not need shared_preload_libraries. Extensions are created
+# by the Prisma migration (CREATE EXTENSION), not by the Postgres command.
+
+name: matchinvoice
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: matchinvoice
+      POSTGRES_PASSWORD: matchinvoice
+      POSTGRES_DB: matchinvoice
+    ports:
+      - "54329:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matchinvoice -d matchinvoice"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "63799:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  minio:
+    # Official MinIO server image. Quay is the registry that publishes it;
+    # Docker Hub "minio/minio" is not pullable.
+    image: quay.io/minio/minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: matchinvoice
+      MINIO_ROOT_PASSWORD: matchinvoice-secret
+    ports:
+      - "59000:9000"
+      - "59001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # Creates the matchinvoice bucket, then exits 0. Not a long-running service.
+  # Client image is published on Quay; Docker Hub's minio/mc is not pullable here.
+  minio-init:
+    image: quay.io/minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set local http://minio:9000 matchinvoice matchinvoice-secret
+        mc mb local/matchinvoice || true
+        mc stat local/matchinvoice
+    restart: "no"
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
