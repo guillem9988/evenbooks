@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client.js";
-import { CsvStatementError, parseBankCsv } from "../statements/parse-csv.js";
+import { StatementFileError } from "../statements/parse-csv.js";
+import { parseStatementFile, statementExtension } from "../statements/parse-statement.js";
 
 const ORGANIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -21,7 +22,10 @@ export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClie
 
     const file = await request.file();
     if (file === undefined) {
-      return reply.code(400).send({ error: "CSV file is required" });
+      return reply.code(400).send({ error: "Statement file is required" });
+    }
+    if (statementExtension(file.filename) === null) {
+      return reply.code(400).send({ error: "Unsupported statement file" });
     }
 
     const sourceBank = readSourceBank(file.fields.source_bank);
@@ -31,10 +35,13 @@ export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClie
 
     let transactions;
     try {
-      transactions = parseBankCsv((await file.toBuffer()).toString("utf8"));
+      transactions = await parseStatementFile(file.filename, await file.toBuffer());
     } catch (error) {
-      const message = error instanceof CsvStatementError ? error.message : "Invalid CSV file";
+      const message = error instanceof StatementFileError ? error.message : "Unreadable statement file";
       return reply.code(400).send({ error: message });
+    }
+    if (transactions.length === 0) {
+      return reply.code(400).send({ error: "Statement has no transactions" });
     }
 
     const statement = await prisma.bankStatement.create({

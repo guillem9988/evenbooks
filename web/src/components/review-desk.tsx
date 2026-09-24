@@ -69,6 +69,7 @@ export function ReviewDesk() {
   const [legalName, setLegalName] = useState("");
   const [taxId, setTaxId] = useState("");
   const [statement, setStatement] = useState<File | null>(null);
+  const [importedCount, setImportedCount] = useState<number | null>(null);
   const [invoices, setInvoices] = useState<FileList | null>(null);
   const [from, setFrom] = useState("2026-01-01");
   const [to, setTo] = useState("2026-12-31");
@@ -148,7 +149,9 @@ export function ReviewDesk() {
       if (!response.ok) {
         throw new Error(body.error ?? "Statement upload failed");
       }
-      setNotice(`Imported ${body.totalTransactions ?? 0} bank lines.`);
+      const count = body.totalTransactions ?? 0;
+      setImportedCount(count);
+      setNotice(`Imported ${count} bank lines.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Statement upload failed");
     } finally {
@@ -302,7 +305,7 @@ export function ReviewDesk() {
         <Card>
           <CardHeader>
             <CardTitle>Imports</CardTitle>
-            <CardDescription>CSV statement first, then PDF or image invoices.</CardDescription>
+            <CardDescription>CSV, OFX, QFX, or Excel statement, then PDF or image invoices.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -310,13 +313,16 @@ export function ReviewDesk() {
               <Input
                 id="statement"
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.ofx,.qfx,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/x-ofx"
                 disabled={!organizationId}
                 onChange={(event) => setStatement(event.target.files?.[0] ?? null)}
               />
               <Button type="button" variant="outline" disabled={!organizationId || statement === null || busy !== null} onClick={uploadStatement}>
-                {busy === "statement" ? "Uploading…" : "Upload CSV"}
+                {busy === "statement" ? "Uploading…" : "Upload statement"}
               </Button>
+              {importedCount !== null ? (
+                <p className="text-sm text-muted-foreground">Imported {importedCount} transactions.</p>
+              ) : null}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="invoices">Invoices</Label>

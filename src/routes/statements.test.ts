@@ -47,6 +47,13 @@ describe("POST /organizations/:organizationId/statements", () => {
     expect(statement.transactions[0]?.rawDescription).toBe("Acme SL");
     expect(statement.transactions[0]?.matchStatus).toBe(MatchStatus.UNMATCHED);
 
+    const textFile = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/statements`,
+      ...filePayload("notes.txt", "text/plain", "this is not a statement"),
+    });
+    expect(textFile.statusCode).toBe(400);
+
     await database.prisma.organization.delete({ where: { id: organization.id } });
   });
 });
@@ -63,6 +70,27 @@ function csvPayload(csv: string, sourceBank: string): { headers: Record<string, 
     "Content-Type: text/csv",
     "",
     csv,
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+  return {
+    headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+    payload,
+  };
+}
+
+function filePayload(
+  filename: string,
+  contentType: string,
+  body: string,
+): { headers: Record<string, string>; payload: string } {
+  const boundary = "----matchinvoice";
+  const payload = [
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="file"; filename="${filename}"`,
+    `Content-Type: ${contentType}`,
+    "",
+    body,
     `--${boundary}--`,
     "",
   ].join("\r\n");

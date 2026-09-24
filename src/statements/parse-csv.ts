@@ -1,4 +1,11 @@
-export class CsvStatementError extends Error {
+export class StatementFileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StatementFileError";
+  }
+}
+
+export class CsvStatementError extends StatementFileError {
   constructor(message: string) {
     super(message);
     this.name = "CsvStatementError";
@@ -45,8 +52,18 @@ export function parseBankCsv(content: string): ParsedBankTransaction[] {
     throw new CsvStatementError("CSV must include a header and at least one transaction");
   }
 
+  return parseBankTable(rows);
+}
+
+/** Header plus data rows. Same columns as the CSV importer. */
+export function parseBankTable(rows: string[][]): ParsedBankTransaction[] {
+  const filled = rows.filter((row) => row.some((cell) => cell.trim() !== ""));
+  const header = filled[0];
+  if (header === undefined || filled.length < 2) {
+    throw new CsvStatementError("Statement must include a header and at least one transaction");
+  }
   const columns = mapColumns(header);
-  return rows.slice(1).map((row, index) => parseRow(row, columns, index + 2));
+  return filled.slice(1).map((row, index) => parseRow(row, columns, index + 2));
 }
 
 export function cleanDescription(value: string): string {

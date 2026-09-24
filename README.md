@@ -90,7 +90,7 @@ web/                          Next.js review panel on port 43124
 
 ## Bank statements
 
-`POST /organizations/<uuid>/statements` uploads a CSV (`multipart/form-data`, file field, optional `source_bank`). Headers can be `Date`/`Description`/`Amount` or `Fecha`/`Concepto`/`Importe`, or debit/credit columns (`Debe`/`Haber`). Amounts are stored as signed cents. A European decimal comma such as `-121,00` is an expense of 12100 cents. The response is the statement id and `totalTransactions`.
+`POST /organizations/<uuid>/statements` uploads a statement (`multipart/form-data`, file field, optional `source_bank`). The same field accepts `.csv`, `.ofx` / `.qfx`, and `.xlsx`. CSV and the first Excel sheet use `Date`/`Description`/`Amount` or `Fecha`/`Concepto`/`Importe`, or debit/credit columns (`Debe`/`Haber`). OFX reads each `STMTTRN` (`DTPOSTED`, `TRNAMT`, `NAME` or `MEMO`). Amounts are stored as signed cents. A European decimal comma such as `-121,00` is an expense of 12100 cents. An unknown extension, an unreadable file, or a file with no transactions is 400. The response is the statement id and `totalTransactions`.
 
 ```bash
 curl -X POST http://127.0.0.1:43123/organizations/<organization-uuid>/statements \
