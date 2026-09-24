@@ -1,58 +1,129 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { InfoIcon } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizationId } from "@/components/shell";
+import { EmptyState, ErrorBanner, LoadingRows, PageHeader, QuarterPicker, messageOf, quarterRange, useQuarter } from "@/components/ui-kit";
 import { api } from "@/lib/api";
 import { euros } from "@/lib/money";
 
-interface Bucket { rate: number; baseCents: string; taxCents: string }
+interface Bucket {
+  rate: number;
+  baseCents: string;
+  taxCents: string;
+}
+
 interface Preview {
-  disclaimer: string;
   issued: Bucket[];
   received: Bucket[];
 }
 
 export default function TaxesPage() {
   const organizationId = useOrganizationId();
+  const [quarter, setQuarter] = useQuarter();
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!organizationId) return;
+  const load = useCallback(async () => {
+    const { from, to } = quarterRange(quarter);
     setLoading(true);
     setError(null);
-    api<Preview>(`/organizations/${organizationId}/taxes/preview?from=2026-07-01&to=2026-09-30`)
-      .then(setPreview)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "No s'ha pogut carregar la previsualització"))
-      .finally(() => setLoading(false));
-  }, [organizationId]);
+    try {
+      setPreview(await api<Preview>(`/organizations/${organizationId}/taxes/preview?from=${from}&to=${to}`));
+    } catch (cause) {
+      setError(messageOf(cause, "No s'ha pogut carregar la previsualització"));
+    } finally {
+      setLoading(false);
+    }
+  }, [organizationId, quarter]);
 
-  if (!organizationId) return <p className="text-sm text-muted-foreground">Crea l'organització per veure els impostos.</p>;
-  if (loading) return <p className="text-sm text-muted-foreground">Carregant la previsualització…</p>;
-  if (error) return <p className="text-sm text-destructive" role="alert">{error}</p>;
-  if (preview === null) return <p className="text-sm text-muted-foreground">Sense dades del trimestre.</p>;
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const output = sumTax(preview?.issued ?? []);
+  const input = sumTax(preview?.received ?? []);
+  const balance = output - input;
 
   return (
-    <section className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Previsualització del model 303</h1>
-      <p className="rounded-lg border bg-muted px-3 py-2 text-sm">Previsualització. No és una presentació a l'AEAT.</p>
-      <RateTable title="IVA repercutit (factures emeses)" rows={preview.issued} />
-      <RateTable title="IVA suportat (factures rebudes)" rows={preview.received} />
-    </section>
+    <>
+      <PageHeader
+        title="Impostos"
+        description="Previsualització del model 303 a partir de les factures emeses i rebudes del trimestre."
+        actions={<QuarterPicker value={quarter} onChange={setQuarter} />}
+      />
+      <p className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        <InfoIcon className="mt-0.5 size-4 shrink-0" />
+        Previsualització orientativa. No és una presentació a l’AEAT.
+      </p>
+      <ErrorBanner message={error} onRetry={load} />
+      {loading ? (
+        <LoadingRows rows={4} />
+      ) : preview ? (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <RateCard title="IVA repercutit" description="Factures emeses" rows={preview.issued} />
+            <RateCard title="IVA suportat" description="Factures rebudes analitzades" rows={preview.received} />
+          </div>
+          <Card>
+            <CardContent className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">{balance < 0n ? "Resultat a compensar" : "Resultat a ingressar"}</p>
+              <p className="text-2xl font-semibold tabular-nums">{euros(balance.toString())}</p>
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
+    </>
   );
 }
 
-function RateTable({ title, rows }: { title: string; rows: Bucket[] }) {
+function RateCard({ title, description, rows }: { title: string; description: string; rows: Bucket[] }) {
+  const base = rows.reduce((total, row) => total + BigInt(row.baseCents), 0n);
+  const tax = sumTax(rows);
   return (
-    <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium">{title}</h2>
-      {rows.length === 0 ? <p className="text-sm text-muted-foreground">Cap base en aquest període.</p> : null}
-      {rows.map((row) => (
-        <p key={row.rate} className="rounded-lg border p-3 text-sm">
-          {row.rate}% · base {euros(row.baseCents)} · quota {euros(row.taxCents)}
-        </p>
-      ))}
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <EmptyState title="Cap base en aquest trimestre" />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tipus</TableHead>
+                <TableHead className="text-right">Base</TableHead>
+                <TableHead className="text-right">Quota</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.rate}>
+                  <TableCell>{row.rate}%</TableCell>
+                  <TableCell className="text-right tabular-nums">{euros(row.baseCents)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{euros(row.taxCents)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell>Total</TableCell>
+                <TableCell className="text-right tabular-nums">{euros(base.toString())}</TableCell>
+                <TableCell className="text-right tabular-nums">{euros(tax.toString())}</TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
+}
+
+function sumTax(rows: Bucket[]): bigint {
+  return rows.reduce((total, row) => total + BigInt(row.taxCents), 0n);
 }

@@ -2,24 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DocumentForm, type Contact, type DocumentPayload } from "@/components/document-form";
 import { useOrganizationId } from "@/components/shell";
+import { EmptyState, ErrorBanner, LoadingRows, Notice, PageHeader, StatusBadge, formatDate, messageOf } from "@/components/ui-kit";
 import { api } from "@/lib/api";
-import { euros, parseEuroInput } from "@/lib/money";
-
-interface Contact {
-  id: string;
-  legalName: string;
-  role: string;
-}
+import { euros } from "@/lib/money";
 
 interface IssuedInvoice {
   id: string;
   seriesNumber: string;
   invoiceDate: string;
-  status: string;
+  status: "PAID" | "UNPAID";
   contactName: string;
+  baseAmountCents: string;
+  taxAmountCents: string;
   totalAmountCents: string;
 }
 
@@ -27,19 +24,12 @@ export default function IncomePage() {
   const organizationId = useOrganizationId();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [invoices, setInvoices] = useState<IssuedInvoice[]>([]);
-  const [contactId, setContactId] = useState("");
-  const [seriesNumber, setSeriesNumber] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState("2026-09-01");
-  const [description, setDescription] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [price, setPrice] = useState("");
-  const [taxRate, setTaxRate] = useState("21");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!organizationId) return;
     setLoading(true);
     setError(null);
     try {
@@ -50,7 +40,7 @@ export default function IncomePage() {
       setContacts(people.contacts.filter((contact) => contact.role === "CLIENT"));
       setInvoices(issued.issuedInvoices);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No s'han pogut carregar les factures");
+      setError(messageOf(cause, "No s'han pogut carregar les factures"));
     } finally {
       setLoading(false);
     }
@@ -60,111 +50,123 @@ export default function IncomePage() {
     void load();
   }, [load]);
 
-  async function createInvoice(event: React.FormEvent) {
-    event.preventDefault();
-    const unitAmountCents = parseEuroInput(price);
-    if (unitAmountCents === null) {
-      setError("El preu ha de ser un import en euros, per exemple 100,00");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/organizations/${organizationId}/issued-invoices`, {
-        method: "POST",
-        body: JSON.stringify({
-          contactId,
-          invoiceDate,
-          seriesNumber,
-          lines: [{ description, quantity: Number(quantity), unitAmountCents, taxRate: Number(taxRate) }],
-        }),
-      });
-      setSeriesNumber("");
-      setDescription("");
-      setPrice("");
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No s'ha pogut crear la factura");
-    } finally {
-      setBusy(false);
-    }
+  async function create(payload: DocumentPayload) {
+    await api(`/organizations/${organizationId}/issued-invoices`, {
+      method: "POST",
+      body: JSON.stringify({
+        contactId: payload.contactId,
+        invoiceDate: payload.date,
+        seriesNumber: payload.seriesNumber,
+        lines: payload.lines,
+      }),
+    });
+    setNotice(`Factura ${payload.seriesNumber} creada.`);
+    await load();
   }
 
-  async function markPaid(invoice: IssuedInvoice, paid: boolean) {
+  async function togglePaid(invoice: IssuedInvoice) {
+    setPending(invoice.id);
     setError(null);
     try {
       await api(`/organizations/${organizationId}/issued-invoices/${invoice.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ paid }),
+        body: JSON.stringify({ paid: invoice.status !== "PAID" }),
       });
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No s'ha pogut actualitzar l'estat");
+      setError(messageOf(cause, "No s'ha pogut actualitzar l'estat"));
+    } finally {
+      setPending(null);
     }
   }
 
-  if (!organizationId) return <p className="text-sm text-muted-foreground">Crea l'organització per emetre factures.</p>;
+  const pendingTotal = invoices
+    .filter((invoice) => invoice.status === "UNPAID")
+    .reduce((total, invoice) => total + BigInt(invoice.totalAmountCents), 0n);
 
   return (
-    <section className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Factures emeses</h1>
-      {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
-      <form className="grid gap-3 sm:grid-cols-2" onSubmit={createInvoice}>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="contact">Client</Label>
-          <select id="contact" className="h-8 rounded-lg border bg-background px-2 text-sm" value={contactId} onChange={(event) => setContactId(event.target.value)} required>
-            <option value="">Tria un client</option>
-            {contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.legalName}</option>)}
-          </select>
+    <>
+      <PageHeader title="Ingressos" description="Factures emeses als teus clients. L'import es calcula en cèntims al servidor." />
+      <ErrorBanner message={error} onRetry={load} />
+      <Notice message={notice} />
+      <DocumentForm
+        title="Nova factura"
+        description="Afegeix les línies i revisa la base, l'IVA i el total abans de desar."
+        submitLabel="Crea la factura"
+        contacts={contacts}
+        onSubmit={create}
+      />
+      <section className="flex flex-col gap-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold">Factures emeses</h2>
+          {invoices.length > 0 ? (
+            <p className="text-sm text-muted-foreground">Pendent de cobrament: <span className="font-medium text-foreground tabular-nums">{euros(pendingTotal.toString())}</span></p>
+          ) : null}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="series">Número de sèrie</Label>
-          <Input id="series" value={seriesNumber} onChange={(event) => setSeriesNumber(event.target.value)} required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="date">Data</Label>
-          <Input id="date" type="date" value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="description">Concepte</Label>
-          <Input id="description" value={description} onChange={(event) => setDescription(event.target.value)} required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="quantity">Quantitat</Label>
-          <Input id="quantity" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="price">Preu unitari</Label>
-          <Input id="price" placeholder="100,00" value={price} onChange={(event) => setPrice(event.target.value)} required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="rate">IVA</Label>
-          <select id="rate" className="h-8 rounded-lg border bg-background px-2 text-sm" value={taxRate} onChange={(event) => setTaxRate(event.target.value)}>
-            <option value="21">21%</option>
-            <option value="10">10%</option>
-            <option value="4">4%</option>
-            <option value="0">0%</option>
-          </select>
-        </div>
-        <div className="flex items-end">
-          <Button type="submit" disabled={busy}>{busy ? "Desant…" : "Crea la factura"}</Button>
-        </div>
-      </form>
-      {loading ? <p className="text-sm text-muted-foreground">Carregant factures…</p> : null}
-      {!loading && invoices.length === 0 ? <p className="text-sm text-muted-foreground">Encara no hi ha factures emeses.</p> : null}
-      <ul className="flex flex-col gap-2">
-        {invoices.map((invoice) => (
-          <li key={invoice.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium">{invoice.seriesNumber} · {invoice.contactName}</p>
-              <p className="text-sm text-muted-foreground">{invoice.invoiceDate} · {euros(invoice.totalAmountCents)} · {invoice.status === "PAID" ? "Cobrada" : "Pendent"}</p>
+        {loading ? (
+          <LoadingRows />
+        ) : invoices.length === 0 ? (
+          <EmptyState title="Encara no hi ha factures emeses" hint="Crea la primera amb el formulari de dalt." />
+        ) : (
+          <>
+            <div className="hidden rounded-lg border md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Número</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead className="text-right">Base</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Estat</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell className="font-medium">{invoice.seriesNumber}</TableCell>
+                      <TableCell>{invoice.contactName}</TableCell>
+                      <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{euros(invoice.baseAmountCents)}</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">{euros(invoice.totalAmountCents)}</TableCell>
+                      <TableCell><PaidBadge status={invoice.status} /></TableCell>
+                      <TableCell className="text-right">
+                        <Button type="button" variant="outline" size="sm" disabled={pending === invoice.id} onClick={() => togglePaid(invoice)}>
+                          {invoice.status === "PAID" ? "Marca pendent" : "Marca cobrada"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-            <Button type="button" variant="outline" onClick={() => markPaid(invoice, invoice.status !== "PAID")}>
-              {invoice.status === "PAID" ? "Marca pendent" : "Marca cobrada"}
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </section>
+            <ul className="flex flex-col gap-2 md:hidden">
+              {invoices.map((invoice) => (
+                <li key={invoice.id} className="flex flex-col gap-3 rounded-lg border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{invoice.seriesNumber}</p>
+                      <p className="text-sm text-muted-foreground">{invoice.contactName} · {formatDate(invoice.invoiceDate)}</p>
+                    </div>
+                    <PaidBadge status={invoice.status} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-lg font-semibold tabular-nums">{euros(invoice.totalAmountCents)}</p>
+                    <Button type="button" variant="outline" size="sm" disabled={pending === invoice.id} onClick={() => togglePaid(invoice)}>
+                      {invoice.status === "PAID" ? "Marca pendent" : "Marca cobrada"}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+    </>
   );
+}
+
+function PaidBadge({ status }: { status: "PAID" | "UNPAID" }) {
+  return status === "PAID" ? <StatusBadge tone="success">Cobrada</StatusBadge> : <StatusBadge tone="warning">Pendent</StatusBadge>;
 }
