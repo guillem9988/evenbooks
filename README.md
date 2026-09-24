@@ -102,7 +102,7 @@ curl -X POST http://127.0.0.1:43123/organizations/<organization-uuid>/statements
 
 `POST /organizations/<uuid>/invoices` accepts one or many PDF, PNG, or JPEG parts. Each file is stored in MinIO, inserted as `UPLOADED`, queued on `invoice-processing-queue`, then marked `PROCESSING`. The response is `202` with `invoiceIds`. The request handler does not call OpenAI.
 
-The worker reads the object. A PDF with an embedded text layer is parsed as text. Images and scanned PDFs use `gpt-4o-mini` vision when `OPENAI_API_KEY` is set. Without that key, labeled text is parsed locally and image-only files become `FAILED`. Amounts are integer cents. A parsed invoice triggers reconciliation for that organization. One failed file does not stop the queue.
+The worker reads the object. A PDF with an embedded text layer is parsed as text and does not use Tesseract. Images and scanned PDFs use `gpt-4o-mini` vision when `OPENAI_API_KEY` is set. Without that key, a scanned page is rendered and Tesseract.js reads it, then the labeled-text parser stores integer cents. If that text has no usable total, date, or vendor, the invoice is `FAILED` and the queue continues.
 
 ## Matching
 
