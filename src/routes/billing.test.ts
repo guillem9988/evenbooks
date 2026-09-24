@@ -2,10 +2,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "../lib/prisma.js";
 import { buildServer } from "../server.js";
+import { openSession, withSession } from "../test/session.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databaseUrl);
 const app = await buildServer(config);
+const session = await openSession(app, "billing");
+const inject = withSession(app, session.cookie);
 
 afterAll(async () => {
   await app.close();
@@ -14,13 +17,13 @@ afterAll(async () => {
 
 describe("issued invoices, quotes, and tax preview", () => {
   it("stores a 21% line in cents, sums two rates, and refuses a second quote conversion", async () => {
-    const created = await app.inject({
+    const created = await inject({
       method: "POST",
       url: "/organizations",
       payload: { legalName: "Billing SL", taxId: "B20000001" },
     });
     const organizationId = (created.json() as { id: string }).id;
-    const contact = await app.inject({
+    const contact = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/contacts`,
       payload: { legalName: "Client SL", taxId: "B20000002", email: "client@example.com", role: "CLIENT" },
@@ -28,7 +31,7 @@ describe("issued invoices, quotes, and tax preview", () => {
     expect(contact.statusCode).toBe(201);
     const contactId = (contact.json() as { id: string }).id;
 
-    const issued = await app.inject({
+    const issued = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/issued-invoices`,
       payload: {
@@ -44,7 +47,7 @@ describe("issued invoices, quotes, and tax preview", () => {
     expect(stored.taxAmountCents).toBe(2100n);
     expect(stored.totalAmountCents).toBe(12100n);
 
-    await app.inject({
+    await inject({
       method: "POST",
       url: `/organizations/${organizationId}/issued-invoices`,
       payload: {
@@ -54,7 +57,7 @@ describe("issued invoices, quotes, and tax preview", () => {
         lines: [{ description: "Llibres", quantity: 1, unitAmountCents: "5000", taxRate: 10 }],
       },
     });
-    const preview = await app.inject({
+    const preview = await inject({
       method: "GET",
       url: `/organizations/${organizationId}/taxes/preview?from=2026-01-01&to=2026-12-31`,
     });
@@ -71,7 +74,7 @@ describe("issued invoices, quotes, and tax preview", () => {
     expect(BigInt(general?.baseCents ?? "0") + BigInt(reduced?.baseCents ?? "0")).toBe(15000n);
     expect(BigInt(general?.taxCents ?? "0") + BigInt(reduced?.taxCents ?? "0")).toBe(2600n);
 
-    const quote = await app.inject({
+    const quote = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/quotes`,
       payload: {
@@ -82,14 +85,14 @@ describe("issued invoices, quotes, and tax preview", () => {
       },
     });
     const quoteId = (quote.json() as { id: string }).id;
-    const first = await app.inject({
+    const first = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/quotes/${quoteId}/convert`,
       payload: { seriesNumber: "F-3" },
     });
     expect(first.statusCode).toBe(201);
     expect(await database.prisma.issuedInvoice.count({ where: { organizationId, seriesNumber: "F-3" } })).toBe(1);
-    const second = await app.inject({
+    const second = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/quotes/${quoteId}/convert`,
       payload: { seriesNumber: "F-4" },
@@ -101,33 +104,33 @@ describe("issued invoices, quotes, and tax preview", () => {
   });
 
   it("round-trips a catalog item, renders a PDF, and rectifies once", async () => {
-    const created = await app.inject({
+    const created = await inject({
       method: "POST",
       url: "/organizations",
       payload: { legalName: "PDF SL", taxId: "B30000001" },
     });
     const organizationId = (created.json() as { id: string }).id;
-    const contact = await app.inject({
+    const contact = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/contacts`,
       payload: { legalName: "Client PDF", taxId: "B30000002", email: "pdf@example.com", role: "CLIENT" },
     });
     const contactId = (contact.json() as { id: string }).id;
 
-    const catalog = await app.inject({
+    const catalog = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/catalog`,
       payload: { name: "Hora", unitAmountCents: "10000", taxRate: 21 },
     });
     expect(catalog.statusCode).toBe(201);
     const itemId = (catalog.json() as { id: string }).id;
-    const listed = await app.inject({ method: "GET", url: `/organizations/${organizationId}/catalog` });
+    const listed = await inject({ method: "GET", url: `/organizations/${organizationId}/catalog` });
     expect(listed.statusCode).toBe(200);
     expect((listed.json() as { items: Array<{ id: string; unitAmountCents: string }> }).items).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: itemId, unitAmountCents: "10000", taxRate: 21 })]),
     );
 
-    const issued = await app.inject({
+    const issued = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/issued-invoices`,
       payload: {
@@ -144,7 +147,7 @@ describe("issued invoices, quotes, and tax preview", () => {
     expect(stored.taxAmountCents).toBe(2100n);
     expect(stored.totalAmountCents).toBe(12100n);
 
-    const pdf = await app.inject({
+    const pdf = await inject({
       method: "GET",
       url: `/organizations/${organizationId}/issued-invoices/${invoiceId}.pdf`,
     });
@@ -153,7 +156,7 @@ describe("issued invoices, quotes, and tax preview", () => {
     expect(pdf.rawPayload.subarray(0, 5).toString()).toBe("%PDF-");
     expect(pdf.rawPayload.toString("latin1")).not.toMatch(/10000|2100|12100/);
 
-    const rectified = await app.inject({
+    const rectified = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/issued-invoices/${invoiceId}/rectify`,
     });
@@ -166,17 +169,73 @@ describe("issued invoices, quotes, and tax preview", () => {
     expect(creditRow.taxAmountCents).toBe(-2100n);
     expect(creditRow.totalAmountCents).toBe(-12100n);
 
-    const again = await app.inject({
+    const again = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/issued-invoices/${invoiceId}/rectify`,
     });
     expect(again.statusCode).toBe(409);
-    const nested = await app.inject({
+    const nested = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/issued-invoices/${credit.id}/rectify`,
     });
     expect(nested.statusCode).toBe(400);
 
     await database.prisma.organization.delete({ where: { id: organizationId } });
+  });
+
+  it("generates one recurring invoice per month and keeps strangers out", async () => {
+    const created = await inject({
+      method: "POST",
+      url: "/organizations",
+      payload: { legalName: "Recurrent SL", taxId: "B40000001" },
+    });
+    const organizationId = (created.json() as { id: string }).id;
+    const contact = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/contacts`,
+      payload: { legalName: "Client Rec", taxId: "B40000002", email: "rec@example.com", role: "CLIENT" },
+    });
+    const contactId = (contact.json() as { id: string }).id;
+    const series = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/recurring-invoices`,
+      payload: {
+        contactId,
+        dayOfMonth: 5,
+        lines: [{ description: "Quota", quantity: 1, unitAmountCents: "10000", taxRate: 21 }],
+      },
+    });
+    expect(series.statusCode).toBe(201);
+    const first = await inject({ method: "POST", url: `/organizations/${organizationId}/recurring-invoices/run` });
+    expect(first.statusCode).toBe(200);
+    expect((first.json() as { created: unknown[] }).created).toHaveLength(1);
+    expect(await database.prisma.issuedInvoice.count({ where: { organizationId, recurringInvoiceId: { not: null } } })).toBe(1);
+    const second = await inject({ method: "POST", url: `/organizations/${organizationId}/recurring-invoices/run` });
+    expect((second.json() as { created: unknown[] }).created).toHaveLength(0);
+    expect(await database.prisma.issuedInvoice.count({ where: { organizationId, recurringInvoiceId: { not: null } } })).toBe(1);
+
+    const wrong = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email: "nobody@example.com", password: "wrong-pass" },
+    });
+    expect(wrong.statusCode).toBe(401);
+
+    const stranger = await openSession(app, "stranger");
+    const denied = await withSession(app, stranger.cookie)({
+      method: "POST",
+      url: `/organizations/${organizationId}/catalog`,
+      payload: { name: "Aliè", unitAmountCents: "100", taxRate: 21 },
+    });
+    expect(denied.statusCode).toBe(403);
+    const allowed = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/catalog`,
+      payload: { name: "Hora", unitAmountCents: "350", taxRate: 21 },
+    });
+    expect(allowed.statusCode).toBe(201);
+
+    await database.prisma.organization.delete({ where: { id: organizationId } });
+    await database.prisma.organization.delete({ where: { id: stranger.organizationId } });
   });
 });

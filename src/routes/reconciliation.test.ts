@@ -3,10 +3,13 @@ import { InvoiceStatus, MatchStatus } from "../../generated/prisma/client.js";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "../lib/prisma.js";
 import { buildServer } from "../server.js";
+import { openSession, withSession } from "../test/session.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databaseUrl);
 const app = await buildServer(config);
+const session = await openSession(app, "review");
+const inject = withSession(app, session.cookie);
 
 afterAll(async () => {
   await app.close();
@@ -15,7 +18,7 @@ afterAll(async () => {
 
 describe("reconciliation review", () => {
   it("creates an organization and lists an unstored suggestion", async () => {
-    const created = await app.inject({
+    const created = await inject({
       method: "POST",
       url: "/organizations",
       payload: { legalName: "Review Desk SL", taxId: "B11223344" },
@@ -24,12 +27,12 @@ describe("reconciliation review", () => {
     const organization = created.json() as { id: string; legalName: string; taxId: string };
     expect(organization.legalName).toBe("Review Desk SL");
 
-    const missing = await app.inject({
+    const missing = await inject({
       method: "GET",
       url: "/organizations/00000000-0000-4000-8000-000000000099/reconciliation/review",
     });
     expect(missing.statusCode).toBe(404);
-    const bad = await app.inject({
+    const bad = await inject({
       method: "GET",
       url: "/organizations/not-a-uuid/reconciliation/review",
     });
@@ -63,7 +66,7 @@ describe("reconciliation review", () => {
       },
     });
 
-    const review = await app.inject({
+    const review = await inject({
       method: "GET",
       url: `/organizations/${organization.id}/reconciliation/review`,
     });
@@ -90,7 +93,7 @@ describe("reconciliation review", () => {
       await database.prisma.reconciliationMatch.count({ where: { invoiceId: invoice.id } }),
     ).toBe(0);
 
-    const confirmed = await app.inject({
+    const confirmed = await inject({
       method: "POST",
       url: `/organizations/${organization.id}/reconciliation/matches`,
       payload: { transactionId: transaction.id, invoiceId: invoice.id },
@@ -99,14 +102,14 @@ describe("reconciliation review", () => {
     const match = confirmed.json() as { id: string; matchStatus: string };
     expect(match.matchStatus).toBe(MatchStatus.MANUALLY_MATCHED);
 
-    const again = await app.inject({
+    const again = await inject({
       method: "POST",
       url: `/organizations/${organization.id}/reconciliation/matches`,
       payload: { transactionId: transaction.id, invoiceId: invoice.id },
     });
     expect(again.statusCode).toBe(409);
 
-    const rejected = await app.inject({
+    const rejected = await inject({
       method: "POST",
       url: `/organizations/${organization.id}/reconciliation/matches/${match.id}/reject`,
     });
@@ -115,7 +118,7 @@ describe("reconciliation review", () => {
     expect(after.matchStatus).toBe(MatchStatus.UNMATCHED);
     expect(await database.prisma.reconciliationMatch.findUnique({ where: { id: match.id } })).toBeNull();
 
-    const badMatch = await app.inject({
+    const badMatch = await inject({
       method: "POST",
       url: `/organizations/${organization.id}/reconciliation/matches`,
       payload: { transactionId: "nope", invoiceId: invoice.id },

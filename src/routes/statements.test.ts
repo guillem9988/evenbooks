@@ -3,10 +3,13 @@ import { MatchStatus } from "../../generated/prisma/client.js";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "../lib/prisma.js";
 import { buildServer } from "../server.js";
+import { openSession, withSession } from "../test/session.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databaseUrl);
 const app = await buildServer(config);
+const session = await openSession(app, "statements");
+const inject = withSession(app, session.cookie);
 
 afterAll(async () => {
   await app.close();
@@ -15,10 +18,10 @@ afterAll(async () => {
 
 describe("POST /organizations/:organizationId/statements", () => {
   it("returns 400 for a bad id, 404 for a missing organization, and imports a CSV", async () => {
-    const bad = await app.inject({ method: "POST", url: "/organizations/nope/statements" });
+    const bad = await inject({ method: "POST", url: "/organizations/nope/statements" });
     expect(bad.statusCode).toBe(400);
 
-    const missing = await app.inject({
+    const missing = await inject({
       method: "POST",
       url: "/organizations/00000000-0000-4000-8000-000000000001/statements",
       ...csvPayload("Fecha,Concepto,Importe\n12/03/2026,Acme,-121.00\n", "Caixa"),
@@ -26,9 +29,9 @@ describe("POST /organizations/:organizationId/statements", () => {
     expect(missing.statusCode).toBe(404);
 
     const organization = await database.prisma.organization.create({
-      data: { legalName: "Statement Test SL", taxId: "B00000002" },
+      data: { legalName: "Statement Test SL", taxId: "B00000002", memberships: { create: { userId: session.userId } } },
     });
-    const response = await app.inject({
+    const response = await inject({
       method: "POST",
       url: `/organizations/${organization.id}/statements`,
       ...csvPayload('Fecha;Concepto;Importe\n12/03/2026;  Acme   SL  ;-121,00\n', "Caixa"),
@@ -47,7 +50,7 @@ describe("POST /organizations/:organizationId/statements", () => {
     expect(statement.transactions[0]?.rawDescription).toBe("Acme SL");
     expect(statement.transactions[0]?.matchStatus).toBe(MatchStatus.UNMATCHED);
 
-    const textFile = await app.inject({
+    const textFile = await inject({
       method: "POST",
       url: `/organizations/${organization.id}/statements`,
       ...filePayload("notes.txt", "text/plain", "this is not a statement"),

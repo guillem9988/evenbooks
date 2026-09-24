@@ -3,10 +3,13 @@ import { InvoiceStatus } from "../../generated/prisma/client.js";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "../lib/prisma.js";
 import { buildServer } from "../server.js";
+import { openSession, withSession } from "../test/session.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databaseUrl);
 const app = await buildServer(config);
+const session = await openSession(app, "reconcile");
+const inject = withSession(app, session.cookie);
 
 afterAll(async () => {
   await app.close();
@@ -15,20 +18,20 @@ afterAll(async () => {
 
 describe("POST /organizations/:organizationId/reconcile", () => {
   it("returns 400 for a bad id, 404 for a missing organization, and confirmed matches for a real one", async () => {
-    const bad = await app.inject({
+    const bad = await inject({
       method: "POST",
       url: "/organizations/not-a-uuid/reconcile",
     });
     expect(bad.statusCode).toBe(400);
 
-    const missing = await app.inject({
+    const missing = await inject({
       method: "POST",
       url: "/organizations/00000000-0000-4000-8000-000000000000/reconcile",
     });
     expect(missing.statusCode).toBe(404);
 
     const organization = await database.prisma.organization.create({
-      data: { legalName: "Route Test SL", taxId: "B00000001" },
+      data: { legalName: "Route Test SL", taxId: "B00000001", memberships: { create: { userId: session.userId } } },
     });
     const statement = await database.prisma.bankStatement.create({
       data: { organizationId: organization.id, filename: "movements.csv" },
@@ -59,7 +62,7 @@ describe("POST /organizations/:organizationId/reconcile", () => {
       },
     });
 
-    const response = await app.inject({
+    const response = await inject({
       method: "POST",
       url: `/organizations/${organization.id}/reconcile`,
     });

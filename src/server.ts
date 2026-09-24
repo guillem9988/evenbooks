@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import Fastify from "fastify";
@@ -7,12 +8,15 @@ import { createInvoiceProcessingQueue, INVOICE_PROCESSING_QUEUE } from "./lib/qu
 import { checkPostgres, createDatabase } from "./lib/prisma.js";
 import { RedisClient } from "./lib/redis.js";
 import { checkStorage, createStorageClient, getObject } from "./lib/storage.js";
+import { registerOrganizationGuard } from "./auth/guard.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 import { registerCatalogRoutes } from "./routes/catalog.js";
 import { registerContactRoutes } from "./routes/contacts.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerExpenseRoutes } from "./routes/expenses.js";
 import { registerIssuedInvoiceRoutes } from "./routes/issued-invoices.js";
 import { registerQuoteRoutes } from "./routes/quotes.js";
+import { registerRecurringRoutes } from "./routes/recurring.js";
 import { registerReportRoutes } from "./routes/reports.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerInvoiceRoutes } from "./routes/invoices.js";
@@ -40,10 +44,14 @@ export async function buildServer(config: AppConfig) {
   );
   await app.register(cors, {
     origin: ["http://127.0.0.1:43124", "http://localhost:43124"],
+    credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
+  await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 20 } });
 
+  registerAuthRoutes(app, database.prisma);
+  registerOrganizationGuard(app, database.prisma);
   registerHealthRoutes(app, {
     checkPostgres: () => checkPostgres(database.prisma),
     checkRedis: () => redis.ping(),
@@ -54,6 +62,7 @@ export async function buildServer(config: AppConfig) {
   registerCatalogRoutes(app, database.prisma);
   registerIssuedInvoiceRoutes(app, database.prisma);
   registerQuoteRoutes(app, database.prisma);
+  registerRecurringRoutes(app, database.prisma);
   registerExpenseRoutes(app, database.prisma);
   registerDashboardRoutes(app, database.prisma);
   registerReconcileRoutes(app, database.prisma);

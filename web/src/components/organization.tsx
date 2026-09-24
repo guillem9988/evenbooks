@@ -1,15 +1,20 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { ORG_KEY } from "@/lib/api";
+import { api } from "@/lib/api";
 
-const NAME_KEY = "matchinvoice-organization-name";
+interface SessionUser {
+  displayName: string;
+  organizations: Array<{ id: string; legalName: string }>;
+}
 
 interface OrganizationState {
   ready: boolean;
   organizationId: string;
   organizationName: string;
+  displayName: string;
   select: (id: string, name: string) => void;
+  refresh: () => Promise<void>;
   clear: () => void;
 }
 
@@ -19,29 +24,41 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [ready, setReady] = useState(false);
   const [organizationId, setOrganizationId] = useState("");
   const [organizationName, setOrganizationName] = useState("");
+  const [displayName, setDisplayName] = useState("");
 
-  useEffect(() => {
-    setOrganizationId(window.localStorage.getItem(ORG_KEY) ?? "");
-    setOrganizationName(window.localStorage.getItem(NAME_KEY) ?? "");
-    setReady(true);
+  const refresh = useCallback(async () => {
+    try {
+      const session = await api<SessionUser>("/auth/session");
+      const organization = session.organizations[0];
+      setDisplayName(session.displayName);
+      setOrganizationId(organization?.id ?? "");
+      setOrganizationName(organization?.legalName ?? "");
+    } catch {
+      setDisplayName("");
+      setOrganizationId("");
+      setOrganizationName("");
+    } finally {
+      setReady(true);
+    }
   }, []);
 
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
   const select = useCallback((id: string, name: string) => {
-    window.localStorage.setItem(ORG_KEY, id);
-    window.localStorage.setItem(NAME_KEY, name);
     setOrganizationId(id);
     setOrganizationName(name);
   }, []);
 
   const clear = useCallback(() => {
-    window.localStorage.removeItem(ORG_KEY);
-    window.localStorage.removeItem(NAME_KEY);
+    setDisplayName("");
     setOrganizationId("");
     setOrganizationName("");
   }, []);
 
   return (
-    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, select, clear }}>
+    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, displayName, select, refresh, clear }}>
       {children}
     </OrganizationContext.Provider>
   );

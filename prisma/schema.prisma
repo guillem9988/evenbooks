@@ -86,6 +86,8 @@ model Organization {
   issuedInvoices        IssuedInvoice[]
   quotes                Quote[]
   catalogItems          CatalogItem[]
+  memberships           Membership[]
+  recurringInvoices     RecurringInvoice[]
 
   @@map("organizations")
 }
@@ -188,9 +190,10 @@ model Contact {
   role           ContactRole
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  issuedInvoices IssuedInvoice[]
-  quotes         Quote[]
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  issuedInvoices    IssuedInvoice[]
+  quotes            Quote[]
+  recurringInvoices RecurringInvoice[]
 
   @@map("contacts")
 }
@@ -211,9 +214,11 @@ model IssuedInvoice {
   contact      Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
   lines        IssuedInvoiceLine[]
   quote        Quote?
+  recurringInvoiceId       String? @map("recurring_invoice_id") @db.Uuid
   rectifiesIssuedInvoiceId String? @unique @map("rectifies_issued_invoice_id") @db.Uuid
   rectifies    IssuedInvoice?      @relation("Rectification", fields: [rectifiesIssuedInvoiceId], references: [id], onDelete: Cascade)
   creditNote   IssuedInvoice?      @relation("Rectification")
+  recurring    RecurringInvoice?   @relation(fields: [recurringInvoiceId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, seriesNumber], map: "issued_invoices_org_series_key")
   @@index([organizationId, invoiceDate], map: "idx_issued_invoices_org_date")
@@ -234,6 +239,74 @@ model IssuedInvoiceLine {
   issuedInvoice IssuedInvoice @relation(fields: [issuedInvoiceId], references: [id], onDelete: Cascade)
 
   @@map("issued_invoice_lines")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  displayName  String   @map("display_name") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  memberships Membership[]
+  sessions    Session[]
+
+  @@map("users")
+}
+
+model Membership {
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, organizationId])
+  @@map("memberships")
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String   @unique @db.VarChar(128)
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_sessions_user")
+  @@map("sessions")
+}
+
+model RecurringInvoice {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  contactId      String   @map("contact_id") @db.Uuid
+  dayOfMonth     Int      @map("day_of_month")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      Contact                 @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  lines        RecurringInvoiceLine[]
+  issued       IssuedInvoice[]
+
+  @@index([organizationId], map: "idx_recurring_invoices_org")
+  @@map("recurring_invoices")
+}
+
+model RecurringInvoiceLine {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recurringInvoiceId String     @map("recurring_invoice_id") @db.Uuid
+  description       String
+  quantity          Int
+  unitAmountCents   BigInt      @map("unit_amount_cents")
+  taxRate           TaxRateType @map("tax_rate")
+
+  recurringInvoice RecurringInvoice @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
+
+  @@map("recurring_invoice_lines")
 }
 
 model CatalogItem {

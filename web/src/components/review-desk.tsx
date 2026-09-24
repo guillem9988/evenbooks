@@ -19,7 +19,7 @@ import {
   quarterRange,
   currentQuarter,
 } from "@/components/ui-kit";
-import { API_URL, api } from "@/lib/api";
+import { api, apiPath } from "@/lib/api";
 import { euros } from "@/lib/money";
 
 interface BankLine {
@@ -154,7 +154,7 @@ export function ReviewDesk() {
       return "Conciliació desfeta. El moviment torna a estar pendent.";
     });
 
-  const zipUrl = `${API_URL}/organizations/${organizationId}/reports/accountant-export?from=${from}&to=${to}`;
+  const zipUrl = apiPath(`/organizations/${organizationId}/reports/accountant-export?from=${from}&to=${to}`);
 
   return (
     <>

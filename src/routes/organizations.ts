@@ -10,8 +10,16 @@ export function registerOrganizationRoutes(app: FastifyInstance, prisma: PrismaC
     if (typeof body.taxId !== "string" || body.taxId.trim() === "") {
       return reply.code(400).send({ error: "taxId is required" });
     }
+    const userId = request.userId;
+    if (userId === undefined) {
+      return reply.code(401).send({ error: "Login required" });
+    }
     const organization = await prisma.organization.create({
-      data: { legalName: body.legalName.trim().slice(0, 255), taxId: body.taxId.trim().slice(0, 50) },
+      data: {
+        legalName: body.legalName.trim().slice(0, 255),
+        taxId: body.taxId.trim().slice(0, 50),
+        memberships: { create: { userId } },
+      },
       select: { id: true, legalName: true, taxId: true },
     });
     return reply.code(201).send(organization);

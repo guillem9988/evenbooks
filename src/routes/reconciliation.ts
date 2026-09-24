@@ -78,6 +78,7 @@ export function registerReconciliationRoutes(app: FastifyInstance, prisma: Prism
             isAutoConfirmed: false,
             matchingBreakdown: JSON.parse(JSON.stringify(scored.breakdown)) as Prisma.InputJsonValue,
             confirmedAt: new Date(),
+            confirmedByUserId: request.userId ?? null,
           },
         });
         await tx.bankTransaction.update({

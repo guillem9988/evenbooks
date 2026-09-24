@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DocumentForm, type CatalogPick, type Contact, type DocumentPayload } from "@/components/document-form";
 import { useOrganizationId } from "@/components/shell";
 import { EmptyState, ErrorBanner, LoadingRows, Notice, PageHeader, StatusBadge, formatDate, messageOf } from "@/components/ui-kit";
-import { API_URL, api } from "@/lib/api";
+import { api, apiPath } from "@/lib/api";
 import { euros } from "@/lib/money";
 
 interface IssuedInvoice {
@@ -215,7 +215,7 @@ function InvoiceActions({
     <>
       <a
         className={buttonVariants({ variant: "outline", size: "sm" })}
-        href={`${API_URL}/organizations/${organizationId}/issued-invoices/${invoice.id}.pdf`}
+        href={apiPath(`/organizations/${organizationId}/issued-invoices/${invoice.id}.pdf`)}
       >
         PDF
       </a>

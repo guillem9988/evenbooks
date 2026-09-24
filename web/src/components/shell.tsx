@@ -11,6 +11,7 @@ import {
   LandmarkIcon,
   PackageIcon,
   ReceiptIcon,
+  RepeatIcon,
   ScaleIcon,
   UsersIcon,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const LINKS = [
   { href: "/", label: "Inici", icon: HouseIcon },
   { href: "/ingressos", label: "Ingressos", icon: BanknoteIcon },
   { href: "/cataleg", label: "Catàleg", icon: PackageIcon },
+  { href: "/recurrents", label: "Recurrents", icon: RepeatIcon },
   { href: "/pressupostos", label: "Pressupostos", icon: FileTextIcon },
   { href: "/despeses", label: "Despeses", icon: ReceiptIcon },
   { href: "/banc", label: "Banc", icon: LandmarkIcon },
@@ -43,7 +45,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
 function Frame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { ready, organizationId, organizationName, clear } = useOrganization();
+  const { ready, organizationId, organizationName, displayName, clear } = useOrganization();
 
   return (
     <div className="flex min-h-full flex-1 flex-col md:flex-row">
@@ -65,8 +67,14 @@ function Frame({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-xs font-medium" title={organizationId}>
                   {organizationName || "Organització"}
                 </p>
-                <button type="button" className="text-xs text-muted-foreground underline-offset-4 hover:underline" onClick={clear}>
-                  Canvia
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                  onClick={() => {
+                    void api("/auth/logout", { method: "POST" }).finally(clear);
+                  }}
+                >
+                  Tanca la sessió{displayName ? ` (${displayName})` : ""}
                 </button>
               </div>
             </div>
@@ -104,7 +112,11 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 function Onboarding() {
-  const { select } = useOrganization();
+  const { refresh } = useOrganization();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [taxId, setTaxId] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -115,13 +127,17 @@ function Onboarding() {
     setBusy(true);
     setError(null);
     try {
-      const created = await api<{ id: string; legalName: string }>("/organizations", {
-        method: "POST",
-        body: JSON.stringify({ legalName, taxId }),
-      });
-      select(created.id, created.legalName);
+      if (mode === "login") {
+        await api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+      } else {
+        await api("/auth/register", {
+          method: "POST",
+          body: JSON.stringify({ email, password, displayName, legalName, taxId }),
+        });
+      }
+      await refresh();
     } catch (cause) {
-      setError(messageOf(cause, "No s'ha pogut crear l'organització"));
+      setError(messageOf(cause, mode === "login" ? "No s’ha pogut entrar" : "No s’ha pogut crear el compte"));
     } finally {
       setBusy(false);
     }
@@ -130,23 +146,47 @@ function Onboarding() {
   return (
     <Card className="mx-auto w-full max-w-lg">
       <CardHeader>
-        <CardTitle>Comencem per la teva empresa</CardTitle>
+        <CardTitle>{mode === "login" ? "Entra al teu compte" : "Crea el compte"}</CardTitle>
         <CardDescription>
-          Indica la raó social i el NIF. Es desa en aquest navegador i s’utilitza a totes les seccions.
+          {mode === "login"
+            ? "La sessió es desa en una galeta. Després veuràs l’organització del compte."
+            : "El registre crea el teu usuari i la primera organització."}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="flex flex-col gap-4" onSubmit={submit}>
-          <Field id="org-name" label="Raó social">
-            <Input id="org-name" value={legalName} onChange={(event) => setLegalName(event.target.value)} placeholder="Estudi Vidal SL" required />
+          {mode === "register" ? (
+            <Field id="auth-name" label="El teu nom">
+              <Input id="auth-name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+            </Field>
+          ) : null}
+          <Field id="auth-email" label="Correu">
+            <Input id="auth-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
           </Field>
-          <Field id="org-tax" label="NIF / CIF">
-            <Input id="org-tax" value={taxId} onChange={(event) => setTaxId(event.target.value)} placeholder="B12345678" required />
+          <Field id="auth-password" label="Contrasenya">
+            <Input id="auth-password" type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />
           </Field>
+          {mode === "register" ? (
+            <>
+              <Field id="org-name" label="Raó social">
+                <Input id="org-name" value={legalName} onChange={(event) => setLegalName(event.target.value)} placeholder="Estudi Vidal SL" required />
+              </Field>
+              <Field id="org-tax" label="NIF / CIF">
+                <Input id="org-tax" value={taxId} onChange={(event) => setTaxId(event.target.value)} placeholder="B12345678" required />
+              </Field>
+            </>
+          ) : null}
           <ErrorBanner message={error} />
           <Button type="submit" size="lg" disabled={busy}>
-            {busy ? "Creant…" : "Crea l'organització"}
+            {busy ? "Un moment…" : mode === "login" ? "Entra" : "Crea el compte"}
           </Button>
+          <button
+            type="button"
+            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            onClick={() => setMode(mode === "login" ? "register" : "login")}
+          >
+            {mode === "login" ? "Encara no tens compte? Registra’t" : "Ja tens compte? Entra"}
+          </button>
         </form>
       </CardContent>
     </Card>

@@ -1,9 +1,17 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:43123";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 export const ORG_KEY = "matchinvoice-organization-id";
 
+export function apiPath(path: string): string {
+  if (API_URL !== "") {
+    return `${API_URL}${path}`;
+  }
+  return `/backend${path}`;
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(apiPath(path), {
     ...init,
+    credentials: "include",
     headers: {
       ...(init?.body instanceof FormData ? {} : { "content-type": "application/json" }),
       ...init?.headers,
