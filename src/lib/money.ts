@@ -32,6 +32,16 @@ export function parseEurosToCents(amount: string): bigint {
   return negative ? -cents : cents;
 }
 
+/** Panel and PDF display: decimal comma and euro sign, never raw cents. */
+export function formatEuroDisplay(cents: bigint): string {
+  assertIntegerCents(cents);
+  const negative = cents < 0n;
+  const absolute = negative ? -cents : cents;
+  const whole = absolute / 100n;
+  const fraction = (absolute % 100n).toString().padStart(2, "0");
+  return `${negative ? "-" : ""}${whole.toString()},${fraction} €`;
+}
+
 export function formatCents(cents: bigint): string {
   assertIntegerCents(cents);
   const negative = cents < 0n;

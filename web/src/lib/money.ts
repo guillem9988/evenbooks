@@ -8,6 +8,11 @@ export function euros(cents: string | null | undefined): string {
   return `${negative ? "-" : ""}${padded.slice(0, -2)},${padded.slice(-2)} €`;
 }
 
+/** Euro amount for an input, without the currency sign. 350 cents is `3,50`. */
+export function euroInput(cents: string): string {
+  return euros(cents).replace(" €", "");
+}
+
 export function parseEuroInput(raw: string): string | null {
   const value = raw.trim().replace("€", "").replace(/\s/g, "");
   if (!/^\d+(?:[.,]\d{1,2})?$/.test(value)) {

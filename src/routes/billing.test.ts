@@ -99,4 +99,84 @@ describe("issued invoices, quotes, and tax preview", () => {
 
     await database.prisma.organization.delete({ where: { id: organizationId } });
   });
+
+  it("round-trips a catalog item, renders a PDF, and rectifies once", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/organizations",
+      payload: { legalName: "PDF SL", taxId: "B30000001" },
+    });
+    const organizationId = (created.json() as { id: string }).id;
+    const contact = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/contacts`,
+      payload: { legalName: "Client PDF", taxId: "B30000002", email: "pdf@example.com", role: "CLIENT" },
+    });
+    const contactId = (contact.json() as { id: string }).id;
+
+    const catalog = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/catalog`,
+      payload: { name: "Hora", unitAmountCents: "10000", taxRate: 21 },
+    });
+    expect(catalog.statusCode).toBe(201);
+    const itemId = (catalog.json() as { id: string }).id;
+    const listed = await app.inject({ method: "GET", url: `/organizations/${organizationId}/catalog` });
+    expect(listed.statusCode).toBe(200);
+    expect((listed.json() as { items: Array<{ id: string; unitAmountCents: string }> }).items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: itemId, unitAmountCents: "10000", taxRate: 21 })]),
+    );
+
+    const issued = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/issued-invoices`,
+      payload: {
+        contactId,
+        invoiceDate: "2026-03-10",
+        seriesNumber: "F-PDF",
+        lines: [{ description: "Servei", quantity: 1, unitAmountCents: "10000", taxRate: 21 }],
+      },
+    });
+    expect(issued.statusCode).toBe(201);
+    const invoiceId = (issued.json() as { id: string }).id;
+    const stored = await database.prisma.issuedInvoice.findFirstOrThrow({ where: { id: invoiceId } });
+    expect(stored.baseAmountCents).toBe(10000n);
+    expect(stored.taxAmountCents).toBe(2100n);
+    expect(stored.totalAmountCents).toBe(12100n);
+
+    const pdf = await app.inject({
+      method: "GET",
+      url: `/organizations/${organizationId}/issued-invoices/${invoiceId}.pdf`,
+    });
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers["content-type"]).toContain("application/pdf");
+    expect(pdf.rawPayload.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.rawPayload.toString("latin1")).not.toMatch(/10000|2100|12100/);
+
+    const rectified = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/issued-invoices/${invoiceId}/rectify`,
+    });
+    expect(rectified.statusCode).toBe(201);
+    const credit = rectified.json() as { id: string; seriesNumber: string; rectifiesSeriesNumber: string; totalAmountCents: string };
+    expect(credit.seriesNumber).toBe("F-PDF-R");
+    expect(credit.rectifiesSeriesNumber).toBe("F-PDF");
+    const creditRow = await database.prisma.issuedInvoice.findFirstOrThrow({ where: { id: credit.id } });
+    expect(creditRow.baseAmountCents).toBe(-10000n);
+    expect(creditRow.taxAmountCents).toBe(-2100n);
+    expect(creditRow.totalAmountCents).toBe(-12100n);
+
+    const again = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/issued-invoices/${invoiceId}/rectify`,
+    });
+    expect(again.statusCode).toBe(409);
+    const nested = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/issued-invoices/${credit.id}/rectify`,
+    });
+    expect(nested.statusCode).toBe(400);
+
+    await database.prisma.organization.delete({ where: { id: organizationId } });
+  });
 });

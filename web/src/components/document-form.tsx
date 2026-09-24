@@ -6,12 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ErrorBanner, Field, NativeSelect, today } from "@/components/ui-kit";
-import { euros, parseEuroInput } from "@/lib/money";
+import { euroInput, euros, parseEuroInput } from "@/lib/money";
 
 export interface Contact {
   id: string;
   legalName: string;
   role: string;
+}
+
+export interface CatalogPick {
+  id: string;
+  name: string;
+  unitAmountCents: string;
+  taxRate: number;
 }
 
 export interface DocumentPayload {
@@ -35,12 +42,14 @@ export function DocumentForm({
   description,
   submitLabel,
   contacts,
+  catalog = [],
   onSubmit,
 }: {
   title: string;
   description: string;
   submitLabel: string;
   contacts: Contact[];
+  catalog?: CatalogPick[];
   onSubmit: (payload: DocumentPayload) => Promise<void>;
 }) {
   const [contactId, setContactId] = useState("");
@@ -128,6 +137,30 @@ export function DocumentForm({
             <div className="flex flex-col gap-3">
               {lines.map((line, index) => (
                 <div key={index} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_5rem_7rem_6rem_auto] sm:items-end">
+                  {catalog.length > 0 ? (
+                    <Field id={`line-${index}-catalog`} label="Del catàleg" className="sm:col-span-full">
+                      <NativeSelect
+                        id={`line-${index}-catalog`}
+                        value=""
+                        onChange={(event) => {
+                          const item = catalog.find((entry) => entry.id === event.target.value);
+                          if (!item) return;
+                          update(index, {
+                            description: item.name,
+                            price: euroInput(item.unitAmountCents),
+                            taxRate: String(item.taxRate),
+                          });
+                        }}
+                      >
+                        <option value="">Escriu la línia a mà o tria un producte</option>
+                        {catalog.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} · {euros(item.unitAmountCents)} · {item.taxRate}%
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </Field>
+                  ) : null}
                   <Field id={`line-${index}-description`} label="Concepte">
                     <Input
                       id={`line-${index}-description`}

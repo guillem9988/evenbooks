@@ -85,6 +85,7 @@ model Organization {
   contacts              Contact[]
   issuedInvoices        IssuedInvoice[]
   quotes                Quote[]
+  catalogItems          CatalogItem[]
 
   @@map("organizations")
 }
@@ -210,6 +211,9 @@ model IssuedInvoice {
   contact      Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
   lines        IssuedInvoiceLine[]
   quote        Quote?
+  rectifiesIssuedInvoiceId String? @unique @map("rectifies_issued_invoice_id") @db.Uuid
+  rectifies    IssuedInvoice?      @relation("Rectification", fields: [rectifiesIssuedInvoiceId], references: [id], onDelete: Cascade)
+  creditNote   IssuedInvoice?      @relation("Rectification")
 
   @@unique([organizationId, seriesNumber], map: "issued_invoices_org_series_key")
   @@index([organizationId, invoiceDate], map: "idx_issued_invoices_org_date")
@@ -230,6 +234,20 @@ model IssuedInvoiceLine {
   issuedInvoice IssuedInvoice @relation(fields: [issuedInvoiceId], references: [id], onDelete: Cascade)
 
   @@map("issued_invoice_lines")
+}
+
+model CatalogItem {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String      @map("organization_id") @db.Uuid
+  name             String      @db.VarChar(255)
+  unitAmountCents  BigInt      @map("unit_amount_cents")
+  taxRate          TaxRateType @map("tax_rate")
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId], map: "idx_catalog_items_org")
+  @@map("catalog_items")
 }
 
 model Quote {

@@ -9,6 +9,7 @@ import {
   FileTextIcon,
   HouseIcon,
   LandmarkIcon,
+  PackageIcon,
   ReceiptIcon,
   ScaleIcon,
   UsersIcon,
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { href: "/", label: "Inici", icon: HouseIcon },
   { href: "/ingressos", label: "Ingressos", icon: BanknoteIcon },
+  { href: "/cataleg", label: "Catàleg", icon: PackageIcon },
   { href: "/pressupostos", label: "Pressupostos", icon: FileTextIcon },
   { href: "/despeses", label: "Despeses", icon: ReceiptIcon },
   { href: "/banc", label: "Banc", icon: LandmarkIcon },

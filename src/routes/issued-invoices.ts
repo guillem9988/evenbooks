@@ -1,7 +1,15 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { IssuedInvoiceStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
+import { renderIssuedInvoicePdf } from "../billing/invoice-pdf.js";
 import { cents, day, findOrganization, parseDay, readUuid } from "./org-params.js";
 import { readLines } from "./document-lines.js";
+
+const issuedInclude = {
+  contact: true,
+  lines: true,
+  rectifies: { select: { seriesNumber: true } },
+} as const;
 
 export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: PrismaClient): void {
   app.get("/organizations/:organizationId/issued-invoices", async (request, reply) => {
@@ -14,7 +22,7 @@ export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     }
     const rows = await prisma.issuedInvoice.findMany({
       where: { organizationId },
-      include: { contact: true, lines: true },
+      include: issuedInclude,
       orderBy: { invoiceDate: "desc" },
     });
     return reply.send({ issuedInvoices: rows.map(presentIssued) });
@@ -39,7 +47,7 @@ export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     try {
       const created = await prisma.issuedInvoice.create({
         data: built,
-        include: { contact: true, lines: true },
+        include: issuedInclude,
       });
       return reply.code(201).send(presentIssued(created));
     } catch (error) {
@@ -73,9 +81,118 @@ export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: Prisma
     const updated = await prisma.issuedInvoice.update({
       where: { id: existing.id },
       data: { status: paid ? IssuedInvoiceStatus.PAID : IssuedInvoiceStatus.UNPAID },
-      include: { contact: true, lines: true },
+      include: issuedInclude,
     });
     return reply.send(presentIssued(updated));
+  });
+
+  app.get("/organizations/:organizationId/issued-invoices/:invoiceId.pdf", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const invoiceId = readUuid((request.params as { invoiceId?: string }).invoiceId, "invoiceId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (invoiceId instanceof Error) {
+      return reply.code(400).send({ error: invoiceId.message });
+    }
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { legalName: true, taxId: true },
+    });
+    if (organization === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const invoice = await prisma.issuedInvoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: issuedInclude,
+    });
+    if (invoice === null) {
+      return reply.code(404).send({ error: "Issued invoice not found" });
+    }
+    const pdf = await renderIssuedInvoicePdf({
+      legalName: organization.legalName,
+      taxId: organization.taxId,
+      contactName: invoice.contact.legalName,
+      contactTaxId: invoice.contact.taxId,
+      seriesNumber: invoice.seriesNumber,
+      invoiceDate: day(invoice.invoiceDate) ?? "",
+      rectifiesSeriesNumber: invoice.rectifies?.seriesNumber ?? null,
+      baseAmountCents: invoice.baseAmountCents,
+      taxAmountCents: invoice.taxAmountCents,
+      totalAmountCents: invoice.totalAmountCents,
+      lines: invoice.lines,
+    });
+    const filename = `${invoice.seriesNumber.replace(/[^\w.-]+/g, "_")}.pdf`;
+    return reply
+      .header("content-type", "application/pdf")
+      .header("content-disposition", `attachment; filename="${filename}"`)
+      .send(Buffer.from(pdf));
+  });
+
+  app.post("/organizations/:organizationId/issued-invoices/:invoiceId/rectify", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const invoiceId = readUuid((request.params as { invoiceId?: string }).invoiceId, "invoiceId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (invoiceId instanceof Error) {
+      return reply.code(400).send({ error: invoiceId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const original = await prisma.issuedInvoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: { lines: true, creditNote: { select: { id: true } } },
+    });
+    if (original === null) {
+      return reply.code(404).send({ error: "Issued invoice not found" });
+    }
+    if (original.rectifiesIssuedInvoiceId !== null) {
+      return reply.code(400).send({ error: "Cannot rectify a credit note" });
+    }
+    if (original.creditNote !== null) {
+      return reply.code(409).send({ error: "Invoice is already rectified" });
+    }
+    const seriesNumber = await creditSeries(prisma, organizationId, original.seriesNumber);
+    const today = new Date();
+    const invoiceDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    try {
+      const created = await prisma.issuedInvoice.create({
+        data: {
+          organization: { connect: { id: organizationId } },
+          contact: { connect: { id: original.contactId } },
+          rectifies: { connect: { id: original.id } },
+          seriesNumber,
+          invoiceDate,
+          baseAmountCents: -original.baseAmountCents,
+          taxAmountCents: -original.taxAmountCents,
+          totalAmountCents: -original.totalAmountCents,
+          lines: {
+            create: original.lines.map((line) => ({
+              description: line.description,
+              quantity: line.quantity,
+              unitAmountCents: -line.unitAmountCents,
+              taxRate: line.taxRate,
+              baseAmountCents: -line.baseAmountCents,
+              taxAmountCents: -line.taxAmountCents,
+              totalAmountCents: -line.totalAmountCents,
+            })),
+          },
+        },
+        include: issuedInclude,
+      });
+      return reply.code(201).send(presentIssued(created));
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const target = String(error.meta?.target ?? "");
+        if (target.includes("rectifies")) {
+          return reply.code(409).send({ error: "Invoice is already rectified" });
+        }
+        return reply.code(409).send({ error: "Series number already exists" });
+      }
+      throw error;
+    }
   });
 }
 
@@ -140,6 +257,8 @@ export function presentIssued(row: {
   taxAmountCents: bigint;
   totalAmountCents: bigint;
   contact: { id: string; legalName: string; taxId: string };
+  rectifiesIssuedInvoiceId?: string | null;
+  rectifies?: { seriesNumber: string } | null;
   lines: Array<{
     description: string;
     quantity: number;
@@ -158,6 +277,8 @@ export function presentIssued(row: {
     seriesNumber: row.seriesNumber,
     invoiceDate: day(row.invoiceDate),
     status: row.status,
+    rectifiesIssuedInvoiceId: row.rectifiesIssuedInvoiceId ?? null,
+    rectifiesSeriesNumber: row.rectifies?.seriesNumber ?? null,
     baseAmountCents: cents(row.baseAmountCents),
     taxAmountCents: cents(row.taxAmountCents),
     totalAmountCents: cents(row.totalAmountCents),
@@ -171,4 +292,17 @@ export function presentIssued(row: {
       totalAmountCents: cents(line.totalAmountCents),
     })),
   };
+}
+
+async function creditSeries(prisma: PrismaClient, organizationId: string, seriesNumber: string): Promise<string> {
+  const preferred = `${seriesNumber}-R`.slice(0, 100);
+  const taken = await prisma.issuedInvoice.findFirst({
+    where: { organizationId, seriesNumber: preferred },
+    select: { id: true },
+  });
+  if (taken === null) {
+    return preferred;
+  }
+  const short = randomUUID().replace(/-/g, "").slice(0, 8);
+  return `${seriesNumber}-R-${short}`.slice(0, 100);
 }

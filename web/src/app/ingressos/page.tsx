@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DocumentForm, type Contact, type DocumentPayload } from "@/components/document-form";
+import { DocumentForm, type CatalogPick, type Contact, type DocumentPayload } from "@/components/document-form";
 import { useOrganizationId } from "@/components/shell";
 import { EmptyState, ErrorBanner, LoadingRows, Notice, PageHeader, StatusBadge, formatDate, messageOf } from "@/components/ui-kit";
-import { api } from "@/lib/api";
+import { API_URL, api } from "@/lib/api";
 import { euros } from "@/lib/money";
 
 interface IssuedInvoice {
@@ -15,6 +15,7 @@ interface IssuedInvoice {
   invoiceDate: string;
   status: "PAID" | "UNPAID";
   contactName: string;
+  rectifiesSeriesNumber: string | null;
   baseAmountCents: string;
   taxAmountCents: string;
   totalAmountCents: string;
@@ -23,6 +24,7 @@ interface IssuedInvoice {
 export default function IncomePage() {
   const organizationId = useOrganizationId();
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [catalog, setCatalog] = useState<CatalogPick[]>([]);
   const [invoices, setInvoices] = useState<IssuedInvoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -33,12 +35,14 @@ export default function IncomePage() {
     setLoading(true);
     setError(null);
     try {
-      const [people, issued] = await Promise.all([
+      const [people, issued, products] = await Promise.all([
         api<{ contacts: Contact[] }>(`/organizations/${organizationId}/contacts`),
         api<{ issuedInvoices: IssuedInvoice[] }>(`/organizations/${organizationId}/issued-invoices`),
+        api<{ items: CatalogPick[] }>(`/organizations/${organizationId}/catalog`),
       ]);
       setContacts(people.contacts.filter((contact) => contact.role === "CLIENT"));
       setInvoices(issued.issuedInvoices);
+      setCatalog(products.items);
     } catch (cause) {
       setError(messageOf(cause, "No s'han pogut carregar les factures"));
     } finally {
@@ -64,6 +68,22 @@ export default function IncomePage() {
     await load();
   }
 
+  async function rectify(invoice: IssuedInvoice) {
+    setPending(invoice.id);
+    setError(null);
+    try {
+      const created = await api<{ seriesNumber: string }>(`/organizations/${organizationId}/issued-invoices/${invoice.id}/rectify`, {
+        method: "POST",
+      });
+      setNotice(`Rectificativa ${created.seriesNumber} creada.`);
+      await load();
+    } catch (cause) {
+      setError(messageOf(cause, "No s’ha pogut crear la rectificativa"));
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function togglePaid(invoice: IssuedInvoice) {
     setPending(invoice.id);
     setError(null);
@@ -86,7 +106,7 @@ export default function IncomePage() {
 
   return (
     <>
-      <PageHeader title="Ingressos" description="Factures emeses als teus clients. L'import es calcula en cèntims al servidor." />
+      <PageHeader title="Ingressos" description="Factures emeses als teus clients, amb la base, l’IVA i el total en euros." />
       <ErrorBanner message={error} onRetry={load} />
       <Notice message={notice} />
       <DocumentForm
@@ -94,6 +114,7 @@ export default function IncomePage() {
         description="Afegeix les línies i revisa la base, l'IVA i el total abans de desar."
         submitLabel="Crea la factura"
         contacts={contacts}
+        catalog={catalog}
         onSubmit={create}
       />
       <section className="flex flex-col gap-3">
@@ -125,16 +146,21 @@ export default function IncomePage() {
                 <TableBody>
                   {invoices.map((invoice) => (
                     <TableRow key={invoice.id}>
-                      <TableCell className="font-medium">{invoice.seriesNumber}</TableCell>
+                      <TableCell className="font-medium">
+                        {invoice.seriesNumber}
+                        {invoice.rectifiesSeriesNumber ? (
+                          <p className="text-xs font-normal text-muted-foreground">Rectificativa de {invoice.rectifiesSeriesNumber}</p>
+                        ) : null}
+                      </TableCell>
                       <TableCell>{invoice.contactName}</TableCell>
                       <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
                       <TableCell className="text-right tabular-nums">{euros(invoice.baseAmountCents)}</TableCell>
                       <TableCell className="text-right font-medium tabular-nums">{euros(invoice.totalAmountCents)}</TableCell>
                       <TableCell><PaidBadge status={invoice.status} /></TableCell>
                       <TableCell className="text-right">
-                        <Button type="button" variant="outline" size="sm" disabled={pending === invoice.id} onClick={() => togglePaid(invoice)}>
-                          {invoice.status === "PAID" ? "Marca pendent" : "Marca cobrada"}
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <InvoiceActions invoice={invoice} organizationId={organizationId} pending={pending === invoice.id} onPaid={() => togglePaid(invoice)} onRectify={() => rectify(invoice)} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -147,15 +173,16 @@ export default function IncomePage() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">{invoice.seriesNumber}</p>
+                      {invoice.rectifiesSeriesNumber ? (
+                        <p className="text-xs text-muted-foreground">Rectificativa de {invoice.rectifiesSeriesNumber}</p>
+                      ) : null}
                       <p className="text-sm text-muted-foreground">{invoice.contactName} · {formatDate(invoice.invoiceDate)}</p>
                     </div>
                     <PaidBadge status={invoice.status} />
                   </div>
                   <div className="flex items-center justify-between">
                     <p className="text-lg font-semibold tabular-nums">{euros(invoice.totalAmountCents)}</p>
-                    <Button type="button" variant="outline" size="sm" disabled={pending === invoice.id} onClick={() => togglePaid(invoice)}>
-                      {invoice.status === "PAID" ? "Marca pendent" : "Marca cobrada"}
-                    </Button>
+                    <InvoiceActions invoice={invoice} organizationId={organizationId} pending={pending === invoice.id} onPaid={() => togglePaid(invoice)} onRectify={() => rectify(invoice)} />
                   </div>
                 </li>
               ))}
@@ -169,4 +196,39 @@ export default function IncomePage() {
 
 function PaidBadge({ status }: { status: "PAID" | "UNPAID" }) {
   return status === "PAID" ? <StatusBadge tone="success">Cobrada</StatusBadge> : <StatusBadge tone="warning">Pendent</StatusBadge>;
+}
+
+function InvoiceActions({
+  invoice,
+  organizationId,
+  pending,
+  onPaid,
+  onRectify,
+}: {
+  invoice: IssuedInvoice;
+  organizationId: string;
+  pending: boolean;
+  onPaid: () => void;
+  onRectify: () => void;
+}) {
+  return (
+    <>
+      <a
+        className={buttonVariants({ variant: "outline", size: "sm" })}
+        href={`${API_URL}/organizations/${organizationId}/issued-invoices/${invoice.id}.pdf`}
+      >
+        PDF
+      </a>
+      {invoice.rectifiesSeriesNumber ? (
+        <StatusBadge tone="neutral">Rectificativa</StatusBadge>
+      ) : (
+        <Button type="button" variant="outline" size="sm" disabled={pending} onClick={onRectify}>
+          Rectifica
+        </Button>
+      )}
+      <Button type="button" variant="outline" size="sm" disabled={pending} onClick={onPaid}>
+        {invoice.status === "PAID" ? "Marca pendent" : "Marca cobrada"}
+      </Button>
+    </>
+  );
 }

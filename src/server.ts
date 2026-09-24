@@ -7,6 +7,7 @@ import { createInvoiceProcessingQueue, INVOICE_PROCESSING_QUEUE } from "./lib/qu
 import { checkPostgres, createDatabase } from "./lib/prisma.js";
 import { RedisClient } from "./lib/redis.js";
 import { checkStorage, createStorageClient, getObject } from "./lib/storage.js";
+import { registerCatalogRoutes } from "./routes/catalog.js";
 import { registerContactRoutes } from "./routes/contacts.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerExpenseRoutes } from "./routes/expenses.js";
@@ -39,7 +40,7 @@ export async function buildServer(config: AppConfig) {
   );
   await app.register(cors, {
     origin: ["http://127.0.0.1:43124", "http://localhost:43124"],
-    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 20 } });
 
@@ -50,6 +51,7 @@ export async function buildServer(config: AppConfig) {
   });
   registerOrganizationRoutes(app, database.prisma);
   registerContactRoutes(app, database.prisma);
+  registerCatalogRoutes(app, database.prisma);
   registerIssuedInvoiceRoutes(app, database.prisma);
   registerQuoteRoutes(app, database.prisma);
   registerExpenseRoutes(app, database.prisma);
