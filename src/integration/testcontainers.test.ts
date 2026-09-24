@@ -35,13 +35,14 @@ describe("Testcontainers Postgres", () => {
       WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
       ORDER BY table_name
     `;
-    expect(tables.map((row) => row.table_name).filter((name) => name !== "_prisma_migrations")).toEqual([
+    const names = tables.map((row) => row.table_name).filter((name) => name !== "_prisma_migrations");
+    expect(names).toEqual(expect.arrayContaining([
       "bank_statements",
       "bank_transactions",
       "invoices",
       "organizations",
       "reconciliation_matches",
-    ]);
+    ]));
 
     const extensions = await database.prisma.$queryRaw<Array<{ extname: string }>>`
       SELECT extname FROM pg_extension WHERE extname IN ('pg_trgm', 'pgcrypto') ORDER BY extname

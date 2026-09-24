@@ -261,9 +261,9 @@ export function ReviewDesk() {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
         <p className="text-sm text-muted-foreground">MatchInvoice</p>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reconciliation review</h1>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Banc</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Create the company, import the statement and invoices, then confirm what the matcher is not sure about.
+          Puja l'extracte i les factures, concilia i confirma o rebutja els suggeriments.
         </p>
       </header>
 
@@ -318,7 +318,7 @@ export function ReviewDesk() {
                 onChange={(event) => setStatement(event.target.files?.[0] ?? null)}
               />
               <Button type="button" variant="outline" disabled={!organizationId || statement === null || busy !== null} onClick={uploadStatement}>
-                {busy === "statement" ? "Uploading…" : "Upload statement"}
+                {busy === "statement" ? "Pujant…" : "Puja l'extracte"}
               </Button>
               {importedCount !== null ? (
                 <p className="text-sm text-muted-foreground">Imported {importedCount} transactions.</p>
@@ -340,7 +340,7 @@ export function ReviewDesk() {
                 disabled={!organizationId || invoices === null || invoices.length === 0 || busy !== null}
                 onClick={uploadInvoices}
               >
-                {busy === "invoices" ? "Uploading…" : "Upload invoices"}
+                {busy === "invoices" ? "Pujant…" : "Puja factures"}
               </Button>
             </div>
           </CardContent>
@@ -355,10 +355,10 @@ export function ReviewDesk() {
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button type="button" disabled={!organizationId || busy !== null} onClick={runReconcile}>
-              {busy === "reconcile" || busy === "review" ? "Working…" : "Run reconciliation"}
+              {busy === "reconcile" || busy === "review" ? "Treballant…" : "Concilia"}
             </Button>
             <Button type="button" variant="outline" disabled={!organizationId || busy !== null} onClick={() => loadReview(organizationId)}>
-              Refresh review
+              Actualitza
             </Button>
           </div>
 
@@ -380,7 +380,7 @@ export function ReviewDesk() {
                       invoice={row.invoice}
                       action={
                         <Button type="button" variant="destructive" disabled={busy !== null} onClick={() => rejectMatch(row.id)}>
-                          {busy === row.id ? "Rejecting…" : "Reject"}
+                          {busy === row.id ? "Rebutjant…" : "Rebutja"}
                         </Button>
                       }
                     />
@@ -405,7 +405,7 @@ export function ReviewDesk() {
                           disabled={busy !== null}
                           onClick={() => confirmSuggestion(row)}
                         >
-                          {busy === row.transaction.id ? "Confirming…" : "Confirm"}
+                          {busy === row.transaction.id ? "Confirmant…" : "Confirma"}
                         </Button>
                       }
                     />
@@ -432,7 +432,7 @@ export function ReviewDesk() {
             <Input id="to" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
           </div>
           <Button type="button" variant="outline" disabled={!organizationId} onClick={downloadZip}>
-            Download ZIP
+            Descarrega el ZIP
           </Button>
         </CardContent>
       </Card>

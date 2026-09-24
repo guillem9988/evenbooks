@@ -124,6 +124,10 @@ An unknown organization is 404. A non-UUID id is 400.
 
 `POST /organizations/<uuid>/reconciliation/matches/<id>/reject` deletes that stored match and sets the transaction back to `UNMATCHED`.
 
+## Billing
+
+`POST/GET /organizations/<uuid>/contacts` stores a client or supplier. Issued invoices and quotes take a contact, a date, a series number, and lines. The server stores base, tax, and total as integer cents. `PATCH` marks an issued invoice paid or unpaid. `POST /organizations/<uuid>/quotes/<id>/convert` creates one issued invoice and returns 409 if the quote was already converted. `PATCH /organizations/<uuid>/invoices/<id>` sets an expense category on a parsed received invoice. `GET /organizations/<uuid>/dashboard` and `GET /organizations/<uuid>/taxes/preview` summarize a date range. The tax route is a Modelo 303 preview, not an AEAT filing.
+
 ## Review panel
 
 ```bash

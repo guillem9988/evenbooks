@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Shell } from "@/components/shell";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,14 +14,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MatchInvoice review",
-  description: "Confirm invoice suggestions and download the accountant export.",
+  title: "MatchInvoice",
+  description: "Factures, pressupostos, despeses i conciliació per a autònoms.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="ca" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col">
+        <Shell>{children}</Shell>
+      </body>
     </html>
   );
 }

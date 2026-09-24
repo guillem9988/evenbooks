@@ -40,6 +40,37 @@ enum TaxRateType {
   @@map("tax_rate_type")
 }
 
+enum ContactRole {
+  CLIENT
+  SUPPLIER
+
+  @@map("contact_role")
+}
+
+enum ExpenseCategory {
+  OFFICE
+  TRAVEL
+  SOFTWARE
+  MEALS
+  OTHER
+
+  @@map("expense_category")
+}
+
+enum IssuedInvoiceStatus {
+  UNPAID
+  PAID
+
+  @@map("issued_invoice_status")
+}
+
+enum QuoteStatus {
+  OPEN
+  CONVERTED
+
+  @@map("quote_status")
+}
+
 model Organization {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   legalName String   @map("legal_name") @db.VarChar(255)
@@ -51,6 +82,9 @@ model Organization {
   bankTransactions      BankTransaction[]
   invoices              Invoice[]
   reconciliationMatches ReconciliationMatch[]
+  contacts              Contact[]
+  issuedInvoices        IssuedInvoice[]
+  quotes                Quote[]
 
   @@map("organizations")
 }
@@ -111,9 +145,10 @@ model Invoice {
   totalAmountCents BigInt?       @map("total_amount_cents")
   taxRate          TaxRateType?  @default(UNKNOWN) @map("tax_rate")
   isSimplified     Boolean?      @default(false) @map("is_simplified")
-  ocrRawResponse   Json?         @map("ocr_raw_response")
-  errorMessage     String?       @map("error_message")
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  ocrRawResponse   Json?            @map("ocr_raw_response")
+  errorMessage     String?          @map("error_message")
+  expenseCategory  ExpenseCategory? @map("expense_category")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
 
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   reconciliation ReconciliationMatch?
@@ -141,4 +176,96 @@ model ReconciliationMatch {
   invoice      Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@map("reconciliation_matches")
+}
+
+model Contact {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  legalName      String      @map("legal_name") @db.VarChar(255)
+  taxId          String      @map("tax_id") @db.VarChar(50)
+  email          String      @db.VarChar(255)
+  role           ContactRole
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  issuedInvoices IssuedInvoice[]
+  quotes         Quote[]
+
+  @@map("contacts")
+}
+
+model IssuedInvoice {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String              @map("organization_id") @db.Uuid
+  contactId       String              @map("contact_id") @db.Uuid
+  seriesNumber    String              @map("series_number") @db.VarChar(100)
+  invoiceDate     DateTime            @map("invoice_date") @db.Date
+  status          IssuedInvoiceStatus @default(UNPAID)
+  baseAmountCents BigInt              @map("base_amount_cents")
+  taxAmountCents  BigInt              @map("tax_amount_cents")
+  totalAmountCents BigInt             @map("total_amount_cents")
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  lines        IssuedInvoiceLine[]
+  quote        Quote?
+
+  @@unique([organizationId, seriesNumber], map: "issued_invoices_org_series_key")
+  @@index([organizationId, invoiceDate], map: "idx_issued_invoices_org_date")
+  @@map("issued_invoices")
+}
+
+model IssuedInvoiceLine {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  issuedInvoiceId  String      @map("issued_invoice_id") @db.Uuid
+  description      String
+  quantity         Int
+  unitAmountCents  BigInt      @map("unit_amount_cents")
+  taxRate          TaxRateType @map("tax_rate")
+  baseAmountCents  BigInt      @map("base_amount_cents")
+  taxAmountCents   BigInt      @map("tax_amount_cents")
+  totalAmountCents BigInt      @map("total_amount_cents")
+
+  issuedInvoice IssuedInvoice @relation(fields: [issuedInvoiceId], references: [id], onDelete: Cascade)
+
+  @@map("issued_invoice_lines")
+}
+
+model Quote {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String      @map("organization_id") @db.Uuid
+  contactId        String      @map("contact_id") @db.Uuid
+  seriesNumber     String      @map("series_number") @db.VarChar(100)
+  quoteDate        DateTime    @map("quote_date") @db.Date
+  status           QuoteStatus @default(OPEN)
+  baseAmountCents  BigInt      @map("base_amount_cents")
+  taxAmountCents   BigInt      @map("tax_amount_cents")
+  totalAmountCents BigInt      @map("total_amount_cents")
+  issuedInvoiceId  String?     @unique @map("issued_invoice_id") @db.Uuid
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact       Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  issuedInvoice IssuedInvoice? @relation(fields: [issuedInvoiceId], references: [id], onDelete: SetNull)
+  lines         QuoteLine[]
+
+  @@unique([organizationId, seriesNumber], map: "quotes_org_series_key")
+  @@map("quotes")
+}
+
+model QuoteLine {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quoteId          String      @map("quote_id") @db.Uuid
+  description      String
+  quantity         Int
+  unitAmountCents  BigInt      @map("unit_amount_cents")
+  taxRate          TaxRateType @map("tax_rate")
+  baseAmountCents  BigInt      @map("base_amount_cents")
+  taxAmountCents   BigInt      @map("tax_amount_cents")
+  totalAmountCents BigInt      @map("total_amount_cents")
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@map("quote_lines")
 }

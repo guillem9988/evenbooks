@@ -7,6 +7,11 @@ import { createInvoiceProcessingQueue, INVOICE_PROCESSING_QUEUE } from "./lib/qu
 import { checkPostgres, createDatabase } from "./lib/prisma.js";
 import { RedisClient } from "./lib/redis.js";
 import { checkStorage, createStorageClient, getObject } from "./lib/storage.js";
+import { registerContactRoutes } from "./routes/contacts.js";
+import { registerDashboardRoutes } from "./routes/dashboard.js";
+import { registerExpenseRoutes } from "./routes/expenses.js";
+import { registerIssuedInvoiceRoutes } from "./routes/issued-invoices.js";
+import { registerQuoteRoutes } from "./routes/quotes.js";
 import { registerReportRoutes } from "./routes/reports.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerInvoiceRoutes } from "./routes/invoices.js";
@@ -34,7 +39,7 @@ export async function buildServer(config: AppConfig) {
   );
   await app.register(cors, {
     origin: ["http://127.0.0.1:43124", "http://localhost:43124"],
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "OPTIONS"],
   });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 20 } });
 
@@ -44,6 +49,11 @@ export async function buildServer(config: AppConfig) {
     checkMinio: () => checkStorage(storage, config.s3.bucket),
   });
   registerOrganizationRoutes(app, database.prisma);
+  registerContactRoutes(app, database.prisma);
+  registerIssuedInvoiceRoutes(app, database.prisma);
+  registerQuoteRoutes(app, database.prisma);
+  registerExpenseRoutes(app, database.prisma);
+  registerDashboardRoutes(app, database.prisma);
   registerReconcileRoutes(app, database.prisma);
   registerReconciliationRoutes(app, database.prisma);
   registerStatementRoutes(app, database.prisma);
