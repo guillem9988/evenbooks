@@ -6,6 +6,7 @@ import { createInvoiceProcessingQueue, INVOICE_PROCESSING_QUEUE } from "./lib/qu
 import { checkPostgres, createDatabase } from "./lib/prisma.js";
 import { RedisClient } from "./lib/redis.js";
 import { checkStorage, createStorageClient, getObject } from "./lib/storage.js";
+import { registerReportRoutes } from "./routes/reports.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerInvoiceRoutes } from "./routes/invoices.js";
 import { registerReconcileRoutes } from "./routes/reconcile.js";
@@ -38,6 +39,9 @@ export async function buildServer(config: AppConfig) {
   registerReconcileRoutes(app, database.prisma);
   registerStatementRoutes(app, database.prisma);
   registerInvoiceRoutes(app, database.prisma, storage, config.s3.bucket, invoiceQueue);
+  registerReportRoutes(app, database.prisma, {
+    get: (key) => getObject(storage, config.s3.bucket, key),
+  });
 
   app.addHook("onClose", async () => {
     await invoiceWorker.close();

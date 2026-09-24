@@ -80,7 +80,7 @@ src/lib/storage.ts            MinIO / S3
 src/lib/queue.ts              BullMQ connection; no worker is started
 src/matching/                 fuzzy matcher (amount, date, vendor trigram, NIF/CIF)
 src/workers/                  OCR / LLM worker (later)
-src/reports/                  report export (later)
+src/reports/                  accountant ZIP export
 ```
 
 `npm install` generates the Prisma client into `generated/prisma` (gitignored).
@@ -111,9 +111,13 @@ curl -X POST http://127.0.0.1:43123/organizations/<organization-uuid>/reconcile
 
 The response lists `confirmed` pairs that were stored and `suggestions` that were not. An unknown organization is 404. A non-UUID id is 400.
 
+## Accountant export
+
+`GET /organizations/<uuid>/reports/accountant-export?from=YYYY-MM-DD&to=YYYY-MM-DD` returns `application/zip`. A missing or invalid range is 400. An unknown organization is 404.
+
+The archive contains `resum_trimestral.csv` (one row per bank transaction in the range), `factures/` (matched invoice files renamed `YYYYMMDD_Vendor_TotalEUR_Id`), and `anomalies_sense_justificant.txt` (unmatched expenses). A missing object is listed in the anomalies file and does not fail the download.
+
 ## Not in this step
 
-- OCR / LLM worker
-- Report export
 - Next.js UI
 - Manual confirm / ignore endpoints
