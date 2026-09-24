@@ -53,7 +53,7 @@ MinIO root user is `matchinvoice` / `matchinvoice-secret`. The server image is `
 
 - `npm run dev` — API with reload
 - `npm start` — API once
-- `npm test` — Vitest (money is integer cents)
+- `npm test` — Vitest, including the Testcontainers Postgres suite when Docker is available
 - `npm run typecheck` — `tsc --noEmit`
 - `npx prisma migrate deploy` — apply SQL migrations
 
