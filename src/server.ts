@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { loadConfig, type AppConfig } from "./config.js";
@@ -9,7 +10,9 @@ import { checkStorage, createStorageClient, getObject } from "./lib/storage.js";
 import { registerReportRoutes } from "./routes/reports.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerInvoiceRoutes } from "./routes/invoices.js";
+import { registerOrganizationRoutes } from "./routes/organizations.js";
 import { registerReconcileRoutes } from "./routes/reconcile.js";
+import { registerReconciliationRoutes } from "./routes/reconciliation.js";
 import { registerStatementRoutes } from "./routes/statements.js";
 import { startInvoiceWorker } from "./workers/invoice-worker.js";
 
@@ -29,6 +32,10 @@ export async function buildServer(config: AppConfig) {
     config.redisUrl,
     config.openaiApiKey,
   );
+  await app.register(cors, {
+    origin: ["http://127.0.0.1:43124", "http://localhost:43124"],
+    methods: ["GET", "POST", "OPTIONS"],
+  });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 20 } });
 
   registerHealthRoutes(app, {
@@ -36,7 +43,9 @@ export async function buildServer(config: AppConfig) {
     checkRedis: () => redis.ping(),
     checkMinio: () => checkStorage(storage, config.s3.bucket),
   });
+  registerOrganizationRoutes(app, database.prisma);
   registerReconcileRoutes(app, database.prisma);
+  registerReconciliationRoutes(app, database.prisma);
   registerStatementRoutes(app, database.prisma);
   registerInvoiceRoutes(app, database.prisma, storage, config.s3.bucket, invoiceQueue);
   registerReportRoutes(app, database.prisma, {

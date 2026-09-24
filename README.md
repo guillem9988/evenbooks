@@ -2,7 +2,7 @@
 
 Automated bank-transaction and invoice reconciliation for freelancers and SMEs, with Spanish and Catalan tax context (IVA, NIF/CIF).
 
-This is the foundation plus the matching engine. Postgres, Redis, MinIO, the reconciliation schema, and a Fastify health check are in place. Amounts are integer cents (`bigint` / `BIGINT`), never floats. `src/matching` scores a bank line against a parsed invoice and writes an auto-confirmed pair.
+This is the reconciliation API and the review panel. Postgres, Redis, MinIO, statement ingest, invoice extraction, matching, and the accountant ZIP are in place. Amounts are integer cents (`bigint` / `BIGINT`), never floats.
 
 ## Prerequisites
 
@@ -43,6 +43,7 @@ Compose publishes uncommon host ports. The API environment variables point at th
 | MinIO API | 59000 | 9000 | `S3_ENDPOINT=http://localhost:59000` |
 | MinIO console | 59001 | 9001 | open [http://127.0.0.1:59001](http://127.0.0.1:59001) |
 | API | 43123 | — | `PORT=43123` |
+| Review panel | 43124 | — | `NEXT_PUBLIC_API_URL` |
 
 MinIO root user is `matchinvoice` / `matchinvoice-secret`. The server image is `quay.io/minio/minio` and the bucket sidecar is `quay.io/minio/mc` (Docker Hub no longer serves `minio/minio`). The sidecar creates the `matchinvoice` bucket and then exits. That one-shot container is expected to show as exited once the bucket exists.
 
@@ -78,9 +79,11 @@ src/lib/prisma.ts             Postgres
 src/lib/redis.ts              Redis
 src/lib/storage.ts            MinIO / S3
 src/lib/queue.ts              BullMQ connection; no worker is started
-src/matching/                 fuzzy matcher (amount, date, vendor trigram, NIF/CIF)
-src/workers/                  OCR / LLM worker (later)
+src/matching/                 amount, date, text, and vendor scores
+src/routes/organizations.ts   POST /organizations
+src/routes/reconciliation.ts  review, confirm, reject
 src/reports/                  accountant ZIP export
+web/                          Next.js review panel on port 43124
 ```
 
 `npm install` generates the Prisma client into `generated/prisma` (gitignored).
@@ -103,21 +106,34 @@ The worker reads the object. A PDF with an embedded text layer is parsed as text
 
 ## Matching
 
-`reconcileOrganization` loads unmatched transactions and parsed invoices for one organization, scores every pair, and keeps a one-to-one assignment. A pair is auto-confirmed only when the absolute cent amounts are equal, the currencies agree, and the weighted score is at least `0.8500`. The score is amount (50%), date gap (20%), vendor trigram (20%), and NIF/CIF found in the description (10%). Suggestions above `0.4500` are returned and not stored, so a later manual choice is still free. Confirmed rows land in `reconciliation_matches` and the transaction becomes `AUTO_MATCHED`.
+`reconcileOrganization` loads unmatched transactions and parsed invoices, scores every pair, and keeps a one-to-one assignment. Weights are amount 0.45, date 0.20, text 0.20, and vendor 0.15. Amount is 1.00 on exact absolute cents, 0.90 within 2 cents of the total, and 0.85 when the cents equal the invoice base. A score of at least 0.88 is stored with `is_auto_confirmed` and the transaction becomes `AUTO_MATCHED`. Scores from 0.65 up to 0.88 are suggestions and are not inserted. Lower scores are discarded. `matching_breakdown` stores the four sub-scores and the weights.
 
 ```bash
 curl -X POST http://127.0.0.1:43123/organizations/<organization-uuid>/reconcile
 ```
 
-The response lists `confirmed` pairs that were stored and `suggestions` that were not. An unknown organization is 404. A non-UUID id is 400.
+An unknown organization is 404. A non-UUID id is 400.
+
+## Review
+
+`POST /organizations` with `{ "legalName", "taxId" }` creates a company and returns its id.
+
+`GET /organizations/<uuid>/reconciliation/review` lists suggestions in `[0.65, 0.88)` with the breakdown, the bank line, and the invoice. Those rows are computed, not required to already exist. The same payload includes stored auto-matched rows.
+
+`POST /organizations/<uuid>/reconciliation/matches` with `{ "transactionId", "invoiceId" }` confirms a suggestion (`is_auto_confirmed` false, transaction `MANUALLY_MATCHED`). A second match on either id is 409.
+
+`POST /organizations/<uuid>/reconciliation/matches/<id>/reject` deletes that stored match and sets the transaction back to `UNMATCHED`.
+
+## Review panel
+
+```bash
+cd web && npm install && npm run dev
+```
+
+The panel listens on [http://127.0.0.1:43124](http://127.0.0.1:43124) and calls `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:43123`).
 
 ## Accountant export
 
 `GET /organizations/<uuid>/reports/accountant-export?from=YYYY-MM-DD&to=YYYY-MM-DD` returns `application/zip`. A missing or invalid range is 400. An unknown organization is 404.
 
 The archive contains `resum_trimestral.csv` (one row per bank transaction in the range), `factures/` (matched invoice files renamed `YYYYMMDD_Vendor_TotalEUR_Id`), and `anomalies_sense_justificant.txt` (unmatched expenses). A missing object is listed in the anomalies file and does not fail the download.
-
-## Not in this step
-
-- Next.js UI
-- Manual confirm / ignore endpoints

@@ -11,7 +11,7 @@ export async function reconcileOrganization(
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<ReconcileResult> {
-  const [transactions, invoices] = await Promise.all([
+  const [transactions, invoices, confirmedVendors] = await Promise.all([
     prisma.bankTransaction.findMany({
       where: { organizationId, matchStatus: MatchStatus.UNMATCHED },
     }),
@@ -22,10 +22,11 @@ export async function reconcileOrganization(
         reconciliation: null,
       },
     }),
+    confirmedVendorNames(prisma, organizationId),
   ]);
 
   const pairs = transactions.flatMap((transaction) =>
-    invoices.map((invoice) => scorePair(toTransaction(transaction), toInvoice(invoice))),
+    invoices.map((invoice) => scorePair(toTransaction(transaction), toInvoice(invoice, confirmedVendors))),
   );
   const assignment = assignMatches(pairs);
 
@@ -72,15 +73,27 @@ function toTransaction(row: {
   };
 }
 
-function toInvoice(row: {
-  id: string;
-  vendorName: string | null;
-  vendorTaxId: string | null;
-  invoiceNumber: string | null;
-  invoiceDate: Date | null;
-  currency: string | null;
-  totalAmountCents: bigint | null;
-}): MatchInvoice {
+async function confirmedVendorNames(prisma: PrismaClient, organizationId: string): Promise<Set<string>> {
+  const rows = await prisma.invoice.findMany({
+    where: { organizationId, reconciliation: { isNot: null }, vendorName: { not: null } },
+    select: { vendorName: true },
+  });
+  return new Set(rows.flatMap((row) => (row.vendorName === null ? [] : [row.vendorName.toLowerCase()])));
+}
+
+function toInvoice(
+  row: {
+    id: string;
+    vendorName: string | null;
+    vendorTaxId: string | null;
+    invoiceNumber: string | null;
+    invoiceDate: Date | null;
+    currency: string | null;
+    baseAmountCents: bigint | null;
+    totalAmountCents: bigint | null;
+  },
+  confirmedVendors: Set<string>,
+): MatchInvoice {
   return {
     id: row.id,
     vendorName: row.vendorName,
@@ -88,6 +101,9 @@ function toInvoice(row: {
     invoiceNumber: row.invoiceNumber,
     invoiceDate: row.invoiceDate,
     currency: row.currency,
+    baseAmountCents: row.baseAmountCents,
     totalAmountCents: row.totalAmountCents,
+    previouslyConfirmedVendor:
+      row.vendorName !== null && confirmedVendors.has(row.vendorName.toLowerCase()),
   };
 }

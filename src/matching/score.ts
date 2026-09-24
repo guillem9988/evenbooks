@@ -1,16 +1,16 @@
-import { foldText, normalizeTaxId } from "./normalize.js";
-import { trigramScore } from "./trigram.js";
+import { normalizeTaxId } from "./normalize.js";
+import { textSimilarity } from "./text-score.js";
 
 /** Component weights. They sum to 10_000. */
 export const WEIGHTS = {
-  amount: 5_000,
+  amount: 4_500,
   date: 2_000,
   text: 2_000,
-  taxId: 1_000,
+  vendor: 1_500,
 } as const;
 
-export const AUTO_CONFIRM_MIN = 8_500;
-export const SUGGESTION_MIN = 4_500;
+export const AUTO_CONFIRM_MIN = 8_800;
+export const SUGGESTION_MIN = 6_500;
 
 export interface MatchTransaction {
   id: string;
@@ -28,7 +28,9 @@ export interface MatchInvoice {
   invoiceNumber: string | null;
   invoiceDate: Date | null;
   currency: string | null;
+  baseAmountCents: bigint | null;
   totalAmountCents: bigint | null;
+  previouslyConfirmedVendor?: boolean;
 }
 
 export interface ScorePart {
@@ -44,9 +46,9 @@ export interface MatchingBreakdown {
   };
   date: ScorePart & { dayGap: number | null };
   text: ScorePart & { transactionText: string; vendorText: string };
-  taxId: ScorePart & { matched: boolean };
+  vendor: ScorePart & { nifMatched: boolean; previouslyConfirmed: boolean };
   currencyCompatible: boolean;
-  weights: { amount: string; date: string; text: string; taxId: string };
+  weights: { amount: string; date: string; text: string; vendor: string };
 }
 
 export interface ScoredPair {
@@ -60,26 +62,25 @@ export interface ScoredPair {
 
 export function scorePair(transaction: MatchTransaction, invoice: MatchInvoice): ScoredPair {
   const currencyCompatible = currenciesCompatible(transaction.currency, invoice.currency);
-  const amount = scoreAmount(transaction.amountCents, invoice.totalAmountCents, currencyCompatible);
+  const amount = scoreAmount(transaction.amountCents, invoice, currencyCompatible);
   const date = scoreDate(transaction.transactionDate, invoice.invoiceDate);
-  const text = scoreText(transaction, invoice);
-  const taxId = scoreTaxId(transaction.rawDescription, invoice.vendorTaxId);
+  const textPoints = Math.round(textSimilarity(invoice.vendorName ?? "", transaction.rawDescription) * 10_000);
+  const vendor = scoreVendor(transaction.rawDescription, invoice);
 
   const confidencePoints = Math.round(
     (amount.points * WEIGHTS.amount +
       date.points * WEIGHTS.date +
-      text.points * WEIGHTS.text +
-      taxId.points * WEIGHTS.taxId) /
+      textPoints * WEIGHTS.text +
+      vendor.points * WEIGHTS.vendor) /
       10_000,
   );
-  const autoConfirm = confidencePoints >= AUTO_CONFIRM_MIN && amount.exact && currencyCompatible;
 
   return {
     transactionId: transaction.id,
     invoiceId: invoice.id,
     confidencePoints,
     confidenceScore: formatPoints(confidencePoints),
-    autoConfirm,
+    autoConfirm: confidencePoints >= AUTO_CONFIRM_MIN && currencyCompatible,
     breakdown: {
       amount: {
         score: formatPoints(amount.points),
@@ -90,19 +91,19 @@ export function scorePair(transaction: MatchTransaction, invoice: MatchInvoice):
       },
       date: { score: formatPoints(date.points), points: date.points, dayGap: date.dayGap },
       text: {
-        score: formatPoints(text.points),
-        points: text.points,
-        transactionText: text.transactionText,
-        vendorText: text.vendorText,
+        score: formatPoints(textPoints),
+        points: textPoints,
+        transactionText: transaction.rawDescription,
+        vendorText: invoice.vendorName ?? "",
       },
-      taxId: { score: formatPoints(taxId.points), points: taxId.points, matched: taxId.matched },
+      vendor: {
+        score: formatPoints(vendor.points),
+        points: vendor.points,
+        nifMatched: vendor.nifMatched,
+        previouslyConfirmed: vendor.previouslyConfirmed,
+      },
       currencyCompatible,
-      weights: {
-        amount: "0.5000",
-        date: "0.2000",
-        text: "0.2000",
-        taxId: "0.1000",
-      },
+      weights: { amount: "0.4500", date: "0.2000", text: "0.2000", vendor: "0.1500" },
     },
   };
 }
@@ -115,80 +116,62 @@ export function formatPoints(points: number): string {
 }
 
 function currenciesCompatible(transactionCurrency: string, invoiceCurrency: string | null): boolean {
-  const invoice = (invoiceCurrency ?? "EUR").toUpperCase();
-  return transactionCurrency.toUpperCase() === invoice;
+  return transactionCurrency.toUpperCase() === (invoiceCurrency ?? "EUR").toUpperCase();
 }
 
 function scoreAmount(
   transactionCents: bigint,
-  invoiceCents: bigint | null,
+  invoice: MatchInvoice,
   currencyCompatible: boolean,
 ): { points: number; exact: boolean } {
-  if (!currencyCompatible || invoiceCents === null) {
+  if (!currencyCompatible || invoice.totalAmountCents === null) {
     return { points: 0, exact: false };
   }
-  const exact = absBigInt(transactionCents) === absBigInt(invoiceCents);
-  return { points: exact ? 10_000 : 0, exact };
+  const spent = absBigInt(transactionCents);
+  const total = absBigInt(invoice.totalAmountCents);
+  const difference = spent > total ? spent - total : total - spent;
+  if (difference === 0n) {
+    return { points: 10_000, exact: true };
+  }
+  if (difference <= 2n) {
+    return { points: 9_000, exact: false };
+  }
+  if (invoice.baseAmountCents !== null && spent === absBigInt(invoice.baseAmountCents)) {
+    return { points: 8_500, exact: false };
+  }
+  return { points: 0, exact: false };
 }
 
-function scoreDate(
-  transactionDate: Date,
-  invoiceDate: Date | null,
-): { points: number; dayGap: number | null } {
+function scoreDate(transactionDate: Date, invoiceDate: Date | null): { points: number; dayGap: number | null } {
   if (invoiceDate === null) {
     return { points: 0, dayGap: null };
   }
   const dayGap = utcDayNumber(transactionDate) - utcDayNumber(invoiceDate);
-  if (dayGap < -2) {
-    return { points: 0, dayGap };
+  const gap = Math.abs(dayGap);
+  let points = 0;
+  if (gap === 0) points = 10_000;
+  else if (gap <= 3) points = 9_000;
+  else if (gap <= 7) points = 6_000;
+  else if (gap <= 30) points = 3_000;
+  if (dayGap < -1) {
+    points = Math.round(points / 2);
   }
-  if (dayGap < 0) {
-    return { points: 5_000, dayGap };
-  }
-  if (dayGap === 0) {
-    return { points: 10_000, dayGap };
-  }
-  if (dayGap <= 3) {
-    return { points: 9_000, dayGap };
-  }
-  if (dayGap <= 7) {
-    return { points: 7_000, dayGap };
-  }
-  if (dayGap <= 15) {
-    return { points: 4_000, dayGap };
-  }
-  if (dayGap <= 30) {
-    return { points: 2_000, dayGap };
-  }
-  if (dayGap <= 45) {
-    return { points: 500, dayGap };
-  }
-  return { points: 0, dayGap };
+  return { points, dayGap };
 }
 
-function scoreText(
-  transaction: MatchTransaction,
+function scoreVendor(
+  description: string,
   invoice: MatchInvoice,
-): { points: number; transactionText: string; vendorText: string } {
-  const transactionText = foldText(transaction.normalizedMerchant ?? transaction.rawDescription);
-  const vendorText = foldText(invoice.vendorName ?? "");
-  let points = vendorText.length === 0 ? 0 : trigramScore(transactionText, vendorText);
-  const invoiceNumber = foldText(invoice.invoiceNumber ?? "").replace(/ /g, "");
-  const haystack = foldText(transaction.rawDescription).replace(/ /g, "");
-  if (invoiceNumber.length >= 3 && haystack.includes(invoiceNumber)) {
-    points = Math.max(points, 8_000);
+): { points: number; nifMatched: boolean; previouslyConfirmed: boolean } {
+  const taxId = normalizeTaxId(invoice.vendorTaxId);
+  const nifMatched = taxId !== null && description.toUpperCase().replace(/[^A-Z0-9]/g, "").includes(taxId);
+  if (nifMatched) {
+    return { points: 10_000, nifMatched: true, previouslyConfirmed: false };
   }
-  return { points, transactionText, vendorText };
-}
-
-function scoreTaxId(description: string, vendorTaxId: string | null): { points: number; matched: boolean } {
-  const taxId = normalizeTaxId(vendorTaxId);
-  if (taxId === null) {
-    return { points: 0, matched: false };
+  if (invoice.previouslyConfirmedVendor === true) {
+    return { points: 8_000, nifMatched: false, previouslyConfirmed: true };
   }
-  const haystack = description.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const matched = haystack.includes(taxId);
-  return { points: matched ? 10_000 : 0, matched };
+  return { points: 5_000, nifMatched: false, previouslyConfirmed: false };
 }
 
 function absBigInt(value: bigint): bigint {

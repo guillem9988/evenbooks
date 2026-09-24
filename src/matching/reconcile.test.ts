@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { InvoiceStatus, MatchStatus } from "../../generated/prisma/client.js";
+import { InvoiceStatus, MatchStatus, Prisma } from "../../generated/prisma/client.js";
 import { createDatabase } from "../lib/prisma.js";
 import { loadConfig } from "../config.js";
 import { reconcileOrganization } from "./reconcile.js";
@@ -83,6 +83,59 @@ describe("reconcileOrganization", () => {
     expect(match.isAutoConfirmed).toBe(true);
     expect(match.confidenceScore.toFixed(4)).toBe(first.confirmed[0]?.confidenceScore);
 
+    await database.prisma.organization.delete({ where: { id: organization.id } });
+  });
+
+  it("keeps the unique transaction constraint when two matches are inserted together", async () => {
+    const organization = await database.prisma.organization.create({
+      data: { legalName: "Unique Match SL", taxId: "B00000009" },
+    });
+    const statement = await database.prisma.bankStatement.create({
+      data: { organizationId: organization.id, filename: "one.csv" },
+    });
+    const transaction = await database.prisma.bankTransaction.create({
+      data: {
+        statementId: statement.id,
+        organizationId: organization.id,
+        transactionDate: new Date("2026-03-12T00:00:00.000Z"),
+        valueDate: new Date("2026-03-12T00:00:00.000Z"),
+        amountCents: -5000n,
+        rawDescription: "BETA",
+      },
+    });
+    const invoices = await Promise.all(
+      ["a", "b"].map((suffix) =>
+        database.prisma.invoice.create({
+          data: {
+            organizationId: organization.id,
+            storageKey: `invoices/${organization.id}/${suffix}.pdf`,
+            originalFilename: `${suffix}.pdf`,
+            mimeType: "application/pdf",
+            fileSizeBytes: 10,
+            status: InvoiceStatus.PARSED,
+            vendorName: "Beta Studio",
+            totalAmountCents: 5000n,
+          },
+        }),
+      ),
+    );
+    const results = await Promise.allSettled(
+      invoices.map((invoice) =>
+        database.prisma.reconciliationMatch.create({
+          data: {
+            organizationId: organization.id,
+            transactionId: transaction.id,
+            invoiceId: invoice.id,
+            confidenceScore: new Prisma.Decimal("0.9000"),
+            isAutoConfirmed: true,
+            matchingBreakdown: { amount: { exact: true } },
+          },
+        }),
+      ),
+    );
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(await database.prisma.reconciliationMatch.count({ where: { transactionId: transaction.id } })).toBe(1);
     await database.prisma.organization.delete({ where: { id: organization.id } });
   });
 
