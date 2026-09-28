@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 import type { PrismaClient } from "../../generated/prisma/client.js";
-import type { WorkerConfig } from "../config.js";
+import type { ExtractorConfig, WorkerConfig } from "../config.js";
 import { bullmqConnection, INVOICE_PROCESSING_QUEUE } from "../lib/queue.js";
 import type { InvoiceObjectStore } from "../invoices/process.js";
 import { processInvoiceJob } from "../invoices/process.js";
@@ -9,7 +9,7 @@ export function startInvoiceWorker(
   prisma: PrismaClient,
   store: InvoiceObjectStore,
   redisUrl: string,
-  apiKey: string | null,
+  extractor: ExtractorConfig,
   options: WorkerConfig = { drainDelaySeconds: 5, stalledIntervalMs: 30_000 },
 ): Worker {
   const worker = new Worker(
@@ -19,7 +19,7 @@ export function startInvoiceWorker(
       if (invoiceId === undefined || invoiceId === "") {
         return;
       }
-      await processInvoiceJob(prisma, store, invoiceId, apiKey);
+      await processInvoiceJob(prisma, store, invoiceId, extractor);
     },
     {
       connection: bullmqConnection(redisUrl),

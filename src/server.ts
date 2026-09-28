@@ -44,7 +44,7 @@ export async function buildServer(config: AppConfig) {
     database.prisma,
     { get: (key) => getObject(storage, config.s3.bucket, key) },
     config.redisUrl,
-    config.openaiApiKey,
+    config.extractor,
     config.worker,
   );
   await app.register(cors, {

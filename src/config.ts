@@ -30,6 +30,27 @@ export interface WorkerConfig {
   stalledIntervalMs: number;
 }
 
+export type InvoiceExtractorMode = "auto" | "documentai" | "openai" | "local";
+
+export interface ServiceAccountCredentials {
+  client_email: string;
+  private_key: string;
+  [key: string]: unknown;
+}
+
+export interface DocumentAiConfig {
+  projectId: string;
+  location: string;
+  processorId: string;
+  credentials: ServiceAccountCredentials;
+}
+
+export interface ExtractorConfig {
+  mode: InvoiceExtractorMode;
+  openaiApiKey: string | null;
+  documentAi: DocumentAiConfig | null;
+}
+
 export interface AppConfig {
   nodeEnv: string;
   host: string;
@@ -39,6 +60,7 @@ export interface AppConfig {
   redisUrl: string;
   s3: S3Config;
   openaiApiKey: string | null;
+  extractor: ExtractorConfig;
   webOrigins: string[];
   cookie: CookieConfig;
   trustProxy: boolean;
@@ -169,6 +191,54 @@ export function readCookieConfig(env: Env, production: boolean): CookieConfig {
   return { sameSite, secure, domain: optionalString(env, "COOKIE_DOMAIN") };
 }
 
+function readServiceAccount(raw: string): ServiceAccountCredentials {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON must be the service account key JSON on one line");
+  }
+  const account = parsed as Partial<ServiceAccountCredentials> | null;
+  if (
+    account === null ||
+    typeof account !== "object" ||
+    typeof account.client_email !== "string" ||
+    typeof account.private_key !== "string"
+  ) {
+    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON must contain client_email and private_key");
+  }
+  return { ...account, client_email: account.client_email, private_key: account.private_key.replace(/\\n/g, "\n") };
+}
+
+export function readExtractorConfig(env: Env): ExtractorConfig {
+  const mode = readString(env, "INVOICE_EXTRACTOR", "auto").toLowerCase();
+  if (mode !== "auto" && mode !== "documentai" && mode !== "openai" && mode !== "local") {
+    throw new Error("INVOICE_EXTRACTOR must be auto, documentai, openai, or local");
+  }
+  const projectId = optionalString(env, "GOOGLE_CLOUD_PROJECT_ID");
+  const processorId = optionalString(env, "DOCUMENT_AI_PROCESSOR_ID");
+  const credentialsJson = optionalString(env, "GOOGLE_APPLICATION_CREDENTIALS_JSON");
+  const documentAi =
+    projectId !== null && processorId !== null && credentialsJson !== null
+      ? {
+          projectId,
+          processorId,
+          location: readString(env, "DOCUMENT_AI_LOCATION", "eu").toLowerCase(),
+          credentials: readServiceAccount(credentialsJson),
+        }
+      : null;
+  const openaiApiKey = optionalString(env, "OPENAI_API_KEY");
+  if (mode === "documentai" && documentAi === null) {
+    throw new Error(
+      "INVOICE_EXTRACTOR=documentai needs GOOGLE_CLOUD_PROJECT_ID, DOCUMENT_AI_PROCESSOR_ID, and GOOGLE_APPLICATION_CREDENTIALS_JSON",
+    );
+  }
+  if (mode === "openai" && openaiApiKey === null) {
+    throw new Error("INVOICE_EXTRACTOR=openai needs OPENAI_API_KEY");
+  }
+  return { mode, openaiApiKey, documentAi };
+}
+
 export function loadConfig(env: Env = process.env): AppConfig {
   const databaseUrl = readString(env, "DATABASE_URL", DEFAULT_DATABASE_URL);
   if (env === process.env) {
@@ -198,6 +268,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
       forcePathStyle: readBoolean(env, "S3_FORCE_PATH_STYLE", true),
     },
     openaiApiKey: optionalString(env, "OPENAI_API_KEY"),
+    extractor: readExtractorConfig(env),
     webOrigins: readWebOrigins(optionalString(env, "WEB_ORIGIN"), production),
     cookie: readCookieConfig(env, production),
     trustProxy: readBoolean(env, "TRUST_PROXY", production),

@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { InvoiceStatus, TaxRateType } from "../../generated/prisma/client.js";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "../lib/prisma.js";
-import { processInvoiceJob } from "./process.js";
+import { LOCAL_EXTRACTOR, processInvoiceJob } from "./process.js";
 
 const database = createDatabase(loadConfig().databaseUrl);
 const objects = new Map<string, Buffer>();
@@ -44,9 +44,9 @@ describe("processInvoiceJob", () => {
     const second = await seed(organization.id, "application/pdf", await textPdf(LABELED.replace("F2024-15", "F2024-16")));
 
     const unreadable = async () => "page with no invoice fields";
-    await processInvoiceJob(database.prisma, store, blurry, null, unreadable);
-    await processInvoiceJob(database.prisma, store, textInvoice, null, unreadable);
-    await processInvoiceJob(database.prisma, store, second, null, unreadable);
+    await processInvoiceJob(database.prisma, store, blurry, LOCAL_EXTRACTOR, unreadable);
+    await processInvoiceJob(database.prisma, store, textInvoice, LOCAL_EXTRACTOR, unreadable);
+    await processInvoiceJob(database.prisma, store, second, LOCAL_EXTRACTOR, unreadable);
 
     const failed = await database.prisma.invoice.findUniqueOrThrow({ where: { id: blurry } });
     const parsed = await database.prisma.invoice.findUniqueOrThrow({ where: { id: textInvoice } });
@@ -79,9 +79,9 @@ describe("processInvoiceJob", () => {
     const blank = await seed(organization.id, "image/png", Buffer.from("blank-scan"));
     const followUp = await seed(organization.id, "application/pdf", await textPdf(LABELED.replace("F2024-15", "F2024-17")));
 
-    await processInvoiceJob(database.prisma, store, readable, null, recognize);
-    await processInvoiceJob(database.prisma, store, blank, null, recognize);
-    await processInvoiceJob(database.prisma, store, followUp, null, recognize);
+    await processInvoiceJob(database.prisma, store, readable, LOCAL_EXTRACTOR, recognize);
+    await processInvoiceJob(database.prisma, store, blank, LOCAL_EXTRACTOR, recognize);
+    await processInvoiceJob(database.prisma, store, followUp, LOCAL_EXTRACTOR, recognize);
 
     const parsed = await database.prisma.invoice.findUniqueOrThrow({ where: { id: readable } });
     const failed = await database.prisma.invoice.findUniqueOrThrow({ where: { id: blank } });

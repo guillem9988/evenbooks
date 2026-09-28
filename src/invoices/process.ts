@@ -1,5 +1,7 @@
 import { InvoiceStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
+import type { ExtractorConfig } from "../config.js";
 import { reconcileOrganization } from "../matching/reconcile.js";
+import { documentAiExtract } from "./document-ai.js";
 import { ExtractionError, extractInvoice, readLabeledText, type ExtractedInvoice } from "./extract.js";
 import { recognizeImage, renderPdfPage } from "./ocr.js";
 import { extractPdfText } from "./pdf-text.js";
@@ -13,11 +15,42 @@ const OCR_GAP = "Tesseract did not find a usable total, date, or vendor.";
 
 export type ImageRecognizer = (bytes: Buffer) => Promise<string>;
 
+export type ExtractorName = "document-ai" | "openai" | "local";
+
+const LABELS: Record<ExtractorName, string> = {
+  "document-ai": "Document AI",
+  openai: "OpenAI",
+  local: "Local parser",
+};
+
+export const LOCAL_EXTRACTOR: ExtractorConfig = { mode: "local", openaiApiKey: null, documentAi: null };
+
+/**
+ * Document AI, then OpenAI, then the local text parser and Tesseract. Providers without
+ * credentials are skipped; an explicit INVOICE_EXTRACTOR only chooses where the chain starts.
+ */
+export function extractorChain(config: ExtractorConfig): ExtractorName[] {
+  const available: ExtractorName[] = [];
+  if (config.documentAi !== null) available.push("document-ai");
+  if (config.openaiApiKey !== null) available.push("openai");
+  available.push("local");
+  const start: ExtractorName =
+    config.mode === "documentai"
+      ? "document-ai"
+      : config.mode === "openai"
+        ? "openai"
+        : config.mode === "local"
+          ? "local"
+          : available[0]!;
+  const index = available.indexOf(start);
+  return index === -1 ? available : available.slice(index);
+}
+
 export async function processInvoiceJob(
   prisma: PrismaClient,
   store: InvoiceObjectStore,
   invoiceId: string,
-  apiKey: string | null,
+  extractor: ExtractorConfig,
   recognize: ImageRecognizer = recognizeImage,
 ): Promise<void> {
   try {
@@ -29,9 +62,8 @@ export async function processInvoiceJob(
     const isPdf = invoice.mimeType === "application/pdf";
     const text = isPdf ? await extractPdfText(bytes) : null;
     const hasText = text !== null && text.trim().length >= TEXT_LAYER_MIN;
-    const extracted = hasText
-      ? await extractInvoice({ text, image: null, apiKey })
-      : await extractWithoutText(bytes, invoice.mimeType, isPdf, apiKey, recognize);
+    const file: InvoiceFile = { bytes, mimeType: invoice.mimeType, isPdf, text: hasText ? text : null };
+    const extracted = await extractWithChain(extractor, file, recognize);
     await saveParsed(prisma, invoice.id, extracted);
     await reconcileOrganization(prisma, invoice.organizationId);
   } catch (error) {
@@ -45,21 +77,59 @@ export async function processInvoiceJob(
   }
 }
 
-async function extractWithoutText(
-  bytes: Buffer,
-  mimeType: string,
-  isPdf: boolean,
-  apiKey: string | null,
+interface InvoiceFile {
+  bytes: Buffer;
+  mimeType: string;
+  isPdf: boolean;
+  text: string | null;
+}
+
+async function extractWithChain(
+  config: ExtractorConfig,
+  file: InvoiceFile,
   recognize: ImageRecognizer,
 ): Promise<ExtractedInvoice> {
-  if (apiKey !== null) {
-    return extractInvoice({
-      text: null,
-      image: { mediaType: mimeType, bytes },
-      apiKey,
-    });
+  const chain = extractorChain(config);
+  const failures: string[] = [];
+  for (const name of chain) {
+    try {
+      const extracted = await runExtractor(name, config, file, recognize);
+      if (failures.length === 0) {
+        return extracted;
+      }
+      return { ...extracted, raw: { result: extracted.raw, fallbackFrom: failures } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "extraction failed";
+      failures.push(`${LABELS[name]}: ${message}`);
+    }
   }
-  const image = isPdf ? await renderPdfPage(bytes) : bytes;
+  throw new ExtractionError(chain.length === 1 ? failures[0]!.replace(/^[^:]+: /, "") : failures.join(" | "));
+}
+
+async function runExtractor(
+  name: ExtractorName,
+  config: ExtractorConfig,
+  file: InvoiceFile,
+  recognize: ImageRecognizer,
+): Promise<ExtractedInvoice> {
+  if (name === "document-ai") {
+    if (config.documentAi === null) {
+      throw new ExtractionError("Document AI is not configured.");
+    }
+    return documentAiExtract(config.documentAi, file);
+  }
+  if (name === "openai") {
+    if (config.openaiApiKey === null) {
+      throw new ExtractionError("OPENAI_API_KEY is not set.");
+    }
+    return file.text !== null
+      ? extractInvoice({ text: file.text, image: null, apiKey: config.openaiApiKey })
+      : extractInvoice({ text: null, image: { mediaType: file.mimeType, bytes: file.bytes }, apiKey: config.openaiApiKey });
+  }
+  if (file.text !== null) {
+    return extractInvoice({ text: file.text, image: null, apiKey: null });
+  }
+  const image = file.isPdf ? await renderPdfPage(file.bytes) : file.bytes;
   const ocrText = await recognize(image);
   const fields = readLabeledText(ocrText);
   if (fields.total_amount === null || fields.invoice_date === null || fields.vendor_name === null) {
@@ -87,7 +157,9 @@ async function saveParsed(prisma: PrismaClient, invoiceId: string, extracted: Ex
       taxRate: extracted.taxRate,
       isSimplified: extracted.isSimplified,
       errorMessage: null,
-      ocrRawResponse: JSON.parse(JSON.stringify(extracted.raw)) as Prisma.InputJsonValue,
+      ocrRawResponse: JSON.parse(
+        JSON.stringify(extracted.raw, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value)),
+      ) as Prisma.InputJsonValue,
     },
   });
 }
