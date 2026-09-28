@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { PlusIcon, Trash2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ErrorBanner, Field, NativeSelect, today } from "@/components/ui-kit";
-import { euroInput, euros, parseEuroInput } from "@/lib/money";
+import { FormDialog, Field, NativeSelect, notifyError, today } from "@/components/ui-kit";
+import { LineEditor, emptyLine, validateLines, type CatalogPick, type DraftLine, type LineErrors, type ParsedLine } from "@/components/line-editor";
+
+export type { CatalogPick } from "@/components/line-editor";
 
 export interface Contact {
   id: string;
@@ -14,228 +13,124 @@ export interface Contact {
   role: string;
 }
 
-export interface CatalogPick {
-  id: string;
-  name: string;
-  unitAmountCents: string;
-  taxRate: number;
-}
-
 export interface DocumentPayload {
   contactId: string;
   date: string;
   seriesNumber: string;
-  lines: Array<{ description: string; quantity: number; unitAmountCents: string; taxRate: number }>;
+  lines: ParsedLine[];
 }
 
-interface DraftLine {
-  description: string;
-  quantity: string;
-  price: string;
-  taxRate: string;
+interface HeaderErrors {
+  contactId?: string;
+  seriesNumber?: string;
+  date?: string;
 }
 
-const emptyLine = (): DraftLine => ({ description: "", quantity: "1", price: "", taxRate: "21" });
-
-export function DocumentForm({
+export function DocumentDialog({
+  open,
+  onOpenChange,
   title,
   description,
   submitLabel,
   contacts,
   catalog = [],
+  suggestedSeries = "",
   onSubmit,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
   submitLabel: string;
   contacts: Contact[];
   catalog?: CatalogPick[];
+  suggestedSeries?: string;
   onSubmit: (payload: DocumentPayload) => Promise<void>;
 }) {
   const [contactId, setContactId] = useState("");
   const [date, setDate] = useState(today);
-  const [seriesNumber, setSeriesNumber] = useState("");
+  const [seriesNumber, setSeriesNumber] = useState(suggestedSeries);
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
-  const [error, setError] = useState<string | null>(null);
+  const [lineErrors, setLineErrors] = useState<LineErrors>([]);
+  const [errors, setErrors] = useState<HeaderErrors>({});
   const [busy, setBusy] = useState(false);
 
-  const preview = lines.reduce(
-    (total, line) => {
-      const cents = parseEuroInput(line.price);
-      const quantity = /^\d+$/.test(line.quantity) ? BigInt(line.quantity) : 0n;
-      if (cents === null) return total;
-      const base = BigInt(cents) * quantity;
-      const tax = (base * BigInt(line.taxRate) + 50n) / 100n;
-      return { base: total.base + base, tax: total.tax + tax };
-    },
-    { base: 0n, tax: 0n },
-  );
-
-  function update(index: number, patch: Partial<DraftLine>) {
-    setLines((current) => current.map((line, position) => (position === index ? { ...line, ...patch } : line)));
+  function reset() {
+    setContactId("");
+    setDate(today());
+    setSeriesNumber(suggestedSeries);
+    setLines([emptyLine()]);
+    setLineErrors([]);
+    setErrors({});
   }
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    const parsed = [];
-    for (const line of lines) {
-      const unitAmountCents = parseEuroInput(line.price);
-      if (unitAmountCents === null || !/^\d+$/.test(line.quantity) || Number(line.quantity) < 1) {
-        setError("Cada línia necessita una quantitat entera i un preu en euros, per exemple 100,00.");
-        return;
-      }
-      parsed.push({
-        description: line.description,
-        quantity: Number(line.quantity),
-        unitAmountCents,
-        taxRate: Number(line.taxRate),
-      });
-    }
+  async function submit() {
+    const header: HeaderErrors = {};
+    if (contactId === "") header.contactId = "Tria un client.";
+    if (seriesNumber.trim() === "") header.seriesNumber = "Escriu el número.";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) header.date = "Tria una data.";
+    const checked = validateLines(lines);
+    setErrors(header);
+    setLineErrors(checked.errors);
+    if (Object.keys(header).length > 0 || checked.parsed === null) return;
     setBusy(true);
-    setError(null);
     try {
-      await onSubmit({ contactId, date, seriesNumber, lines: parsed });
-      setSeriesNumber("");
-      setLines([emptyLine()]);
+      await onSubmit({ contactId, date, seriesNumber: seriesNumber.trim(), lines: checked.parsed });
+      reset();
+      onOpenChange(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No s'ha pogut desar");
+      notifyError(cause, "No s’ha pogut desar");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {contacts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Primer afegeix un client a <a href="/contactes" className="font-medium text-primary underline-offset-4 hover:underline">Contactes</a>.
-          </p>
-        ) : (
-          <form className="flex flex-col gap-4" onSubmit={submit}>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field id="doc-contact" label="Client">
-                <NativeSelect id="doc-contact" value={contactId} onChange={(event) => setContactId(event.target.value)} required>
-                  <option value="">Tria un client</option>
-                  {contacts.map((contact) => (
-                    <option key={contact.id} value={contact.id}>{contact.legalName}</option>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Field id="doc-series" label="Número">
-                <Input id="doc-series" value={seriesNumber} onChange={(event) => setSeriesNumber(event.target.value)} placeholder="2026-001" required />
-              </Field>
-              <Field id="doc-date" label="Data">
-                <Input id="doc-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
-              </Field>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              {lines.map((line, index) => (
-                <div key={index} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_5rem_7rem_6rem_auto] sm:items-end">
-                  {catalog.length > 0 ? (
-                    <Field id={`line-${index}-catalog`} label="Del catàleg" className="sm:col-span-full">
-                      <NativeSelect
-                        id={`line-${index}-catalog`}
-                        value=""
-                        onChange={(event) => {
-                          const item = catalog.find((entry) => entry.id === event.target.value);
-                          if (!item) return;
-                          update(index, {
-                            description: item.name,
-                            price: euroInput(item.unitAmountCents),
-                            taxRate: String(item.taxRate),
-                          });
-                        }}
-                      >
-                        <option value="">Escriu la línia a mà o tria un producte</option>
-                        {catalog.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name} · {euros(item.unitAmountCents)} · {item.taxRate}%
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </Field>
-                  ) : null}
-                  <Field id={`line-${index}-description`} label="Concepte">
-                    <Input
-                      id={`line-${index}-description`}
-                      value={line.description}
-                      onChange={(event) => update(index, { description: event.target.value })}
-                      required
-                    />
-                  </Field>
-                  <Field id={`line-${index}-quantity`} label="Quantitat">
-                    <Input
-                      id={`line-${index}-quantity`}
-                      inputMode="numeric"
-                      value={line.quantity}
-                      onChange={(event) => update(index, { quantity: event.target.value })}
-                      required
-                    />
-                  </Field>
-                  <Field id={`line-${index}-price`} label="Preu unitari">
-                    <Input
-                      id={`line-${index}-price`}
-                      inputMode="decimal"
-                      placeholder="100,00"
-                      value={line.price}
-                      onChange={(event) => update(index, { price: event.target.value })}
-                      required
-                    />
-                  </Field>
-                  <Field id={`line-${index}-rate`} label="IVA">
-                    <NativeSelect id={`line-${index}-rate`} value={line.taxRate} onChange={(event) => update(index, { taxRate: event.target.value })}>
-                      <option value="21">21%</option>
-                      <option value="10">10%</option>
-                      <option value="4">4%</option>
-                      <option value="0">0%</option>
-                    </NativeSelect>
-                  </Field>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Elimina la línia"
-                    disabled={lines.length === 1}
-                    onClick={() => setLines((current) => current.filter((_, position) => position !== index))}
-                  >
-                    <Trash2Icon />
-                  </Button>
-                </div>
-              ))}
-              <Button type="button" variant="outline" className="self-start" onClick={() => setLines((current) => [...current, emptyLine()])}>
-                <PlusIcon /> Afegeix una línia
-              </Button>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <dl className="grid grid-cols-3 gap-4 text-sm tabular-nums">
-                <div>
-                  <dt className="text-muted-foreground">Base</dt>
-                  <dd className="font-medium">{euros(preview.base.toString())}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">IVA</dt>
-                  <dd className="font-medium">{euros(preview.tax.toString())}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Total</dt>
-                  <dd className="font-semibold">{euros((preview.base + preview.tax).toString())}</dd>
-                </div>
-              </dl>
-              <Button type="submit" size="lg" disabled={busy}>
-                {busy ? "Desant…" : submitLabel}
-              </Button>
-            </div>
-            <ErrorBanner message={error} />
-          </form>
-        )}
-      </CardContent>
-    </Card>
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setSeriesNumber((current) => current || suggestedSeries);
+        onOpenChange(next);
+      }}
+      title={title}
+      description={description}
+      submitLabel={submitLabel}
+      busy={busy}
+      onSubmit={submit}
+      wide
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field id="doc-contact" label="Client" error={errors.contactId}>
+          <NativeSelect id="doc-contact" value={contactId} onChange={(event) => setContactId(event.target.value)}>
+            <option value="">Tria un client</option>
+            {contacts.map((contact) => (
+              <option key={contact.id} value={contact.id}>
+                {contact.legalName}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        <Field id="doc-series" label="Número" error={errors.seriesNumber}>
+          <Input id="doc-series" value={seriesNumber} onChange={(event) => setSeriesNumber(event.target.value)} placeholder="2026-001" />
+        </Field>
+        <Field id="doc-date" label="Data" error={errors.date}>
+          <Input id="doc-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+        </Field>
+      </div>
+      <LineEditor idPrefix="doc" lines={lines} onChange={setLines} errors={lineErrors} catalog={catalog} />
+    </FormDialog>
   );
+}
+
+/** Next number after the highest `PREFIX-NNN` style series, or an empty string when there is no pattern. */
+export function nextSeries(existing: string[]): string {
+  let best: { prefix: string; number: number; width: number } | null = null;
+  for (const value of existing) {
+    const match = /^(.*?)(\d+)$/.exec(value);
+    if (!match) continue;
+    const number = Number(match[2]);
+    if (best === null || number > best.number) best = { prefix: match[1] ?? "", number, width: match[2]?.length ?? 1 };
+  }
+  if (best === null) return `${new Date().getFullYear()}-001`;
+  return `${best.prefix}${String(best.number + 1).padStart(best.width, "0")}`;
 }
