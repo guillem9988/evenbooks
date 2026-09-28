@@ -1,11 +1,27 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ReceiptIcon, RefreshCwIcon, UploadIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizationId } from "@/components/shell";
-import { EmptyState, ErrorBanner, LoadingRows, NativeSelect, PageHeader, StatusBadge, formatDate, messageOf } from "@/components/ui-kit";
+import { ExpenseStatusBadge } from "@/components/status-badges";
+import {
+  CardsSkeleton,
+  EmptyState,
+  ErrorBanner,
+  KpiCard,
+  NativeSelect,
+  PageHeader,
+  Segmented,
+  TableSkeleton,
+  formatDate,
+  notifyError,
+  notifySuccess,
+  sumCents,
+  useLoad,
+} from "@/components/ui-kit";
+import { UploadDialog } from "@/components/upload-dialog";
 import { api } from "@/lib/api";
 import { euros } from "@/lib/money";
 
@@ -16,13 +32,6 @@ const CATEGORIES = [
   ["MEALS", "Àpats"],
   ["OTHER", "Altres"],
 ] as const;
-
-const STATUS: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
-  PARSED: { label: "Analitzada", tone: "success" },
-  PROCESSING: { label: "Processant", tone: "warning" },
-  UPLOADED: { label: "Pujada", tone: "neutral" },
-  FAILED: { label: "Error", tone: "danger" },
-};
 
 interface Expense {
   id: string;
@@ -35,39 +44,54 @@ interface Expense {
   expenseCategory: string | null;
 }
 
+type Filter = "ALL" | "UNCATEGORIZED" | "PENDING" | "FAILED";
+
 export default function ExpensesPage() {
   const organizationId = useOrganizationId();
-  const [rows, setRows] = useState<Expense[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [filter, setFilter] = useState<Filter>("ALL");
+  const [saving, setSaving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const body = await api<{ expenses: Expense[] }>(`/organizations/${organizationId}/expenses`);
-      setRows(body.expenses);
-    } catch (cause) {
-      setError(messageOf(cause, "No s'han pogut carregar les despeses"));
-    } finally {
-      setLoading(false);
-    }
+    const body = await api<{ expenses: Expense[] }>(`/organizations/${organizationId}/expenses`);
+    return body.expenses;
   }, [organizationId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { data, setData, error, initialLoading, loading, reload } = useLoad(load, "No s’han pogut carregar les despeses");
+  const rows = data ?? [];
+  const inFlight = rows.some((row) => row.status === "UPLOADED" || row.status === "PROCESSING");
 
-  async function saveCategory(invoice: Expense, expenseCategory: string) {
-    setError(null);
+  useEffect(() => {
+    if (!inFlight) return;
+    const timer = window.setTimeout(() => void reload(), 4000);
+    return () => window.clearTimeout(timer);
+  }, [inFlight, reload, data]);
+
+  const parsed = rows.filter((row) => row.status === "PARSED");
+  const uncategorized = parsed.filter((row) => row.expenseCategory === null);
+  const failed = rows.filter((row) => row.status === "FAILED");
+  const pending = rows.filter((row) => row.status === "UPLOADED" || row.status === "PROCESSING");
+  const visible =
+    filter === "UNCATEGORIZED" ? uncategorized : filter === "FAILED" ? failed : filter === "PENDING" ? pending : rows;
+
+  async function upload(files: File[]) {
+    const form = new FormData();
+    for (const file of files) form.append("files", file);
+    const body = await api<{ invoiceIds: string[] }>(`/organizations/${organizationId}/invoices`, { method: "POST", body: form });
+    notifySuccess(`${body.invoiceIds.length} ${body.invoiceIds.length === 1 ? "factura pujada" : "factures pujades"}. S’estan analitzant.`);
+    await reload();
+  }
+
+  async function saveCategory(row: Expense, expenseCategory: string) {
+    setSaving(row.id);
     try {
-      await api(`/organizations/${organizationId}/invoices/${invoice.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ expenseCategory }),
-      });
-      setRows((current) => current.map((row) => (row.id === invoice.id ? { ...row, expenseCategory } : row)));
+      await api(`/organizations/${organizationId}/invoices/${row.id}`, { method: "PATCH", body: JSON.stringify({ expenseCategory }) });
+      setData((current) => current?.map((item) => (item.id === row.id ? { ...item, expenseCategory } : item)) ?? current);
+      notifySuccess(`Categoria desada per a ${row.vendorName ?? "la despesa"}.`);
     } catch (cause) {
-      setError(messageOf(cause, "No s'ha pogut desar la categoria"));
+      notifyError(cause, "No s’ha pogut desar la categoria");
+    } finally {
+      setSaving(null);
     }
   }
 
@@ -75,86 +99,158 @@ export default function ExpensesPage() {
     <>
       <PageHeader
         title="Despeses"
-        description="Factures rebudes i analitzades. Classifica-les per veure on va la despesa."
-        actions={<Button variant="outline" render={<Link href="/banc" />}>Puja factures al Banc</Button>}
+        description="Factures i tiquets rebuts. En pujar-los se n’extreuen el proveïdor, la data i els imports."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => void reload()} disabled={loading}>
+              <RefreshCwIcon /> Actualitza
+            </Button>
+            <Button onClick={() => setUploading(true)}>
+              <UploadIcon /> Puja factures
+            </Button>
+          </>
+        }
       />
-      <ErrorBanner message={error} onRetry={load} />
-      {loading ? (
-        <LoadingRows rows={4} />
-      ) : rows.length === 0 ? (
-        <EmptyState title="Encara no hi ha factures rebudes" hint="Puja PDF o fotos de tiquets des de la secció Banc." />
-      ) : (
+      <ErrorBanner message={error} onRetry={reload} />
+
+      {initialLoading ? (
         <>
-          <div className="hidden rounded-lg border md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Proveïdor</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead className="text-right">IVA</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Estat</TableHead>
-                  <TableHead className="w-44">Categoria</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium">
-                      {row.vendorName ?? "Proveïdor pendent"}
-                      {row.invoiceNumber ? <span className="block text-xs font-normal text-muted-foreground">{row.invoiceNumber}</span> : null}
-                    </TableCell>
-                    <TableCell>{formatDate(row.invoiceDate)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{euros(row.taxAmountCents)}</TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">{euros(row.totalAmountCents)}</TableCell>
-                    <TableCell><ExpenseStatus status={row.status} /></TableCell>
-                    <TableCell><CategorySelect row={row} onSave={saveCategory} /></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <ul className="flex flex-col gap-2 md:hidden">
-            {rows.map((row) => (
-              <li key={row.id} className="flex flex-col gap-3 rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{row.vendorName ?? "Proveïdor pendent"}</p>
-                    <p className="text-sm text-muted-foreground">{formatDate(row.invoiceDate)}</p>
-                  </div>
-                  <ExpenseStatus status={row.status} />
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-lg font-semibold tabular-nums">{euros(row.totalAmountCents)}</p>
-                  <div className="w-40"><CategorySelect row={row} onSave={saveCategory} /></div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <CardsSkeleton count={3} className="lg:grid-cols-3" />
+          <TableSkeleton columns={6} />
         </>
-      )}
+      ) : data ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <KpiCard label="Total analitzat" value={euros(sumCents(parsed.map((row) => row.totalAmountCents)))} hint={`${parsed.length} factures llegides`} />
+            <KpiCard label="IVA suportat" value={euros(sumCents(parsed.map((row) => row.taxAmountCents)))} hint="Deduïble al model 303" />
+            <KpiCard label="Per revisar" value={String(uncategorized.length + failed.length)} hint={`${uncategorized.length} sense categoria · ${failed.length} no llegibles`} />
+          </div>
+
+          {rows.length === 0 ? (
+            <EmptyState
+              icon={ReceiptIcon}
+              title="Encara no hi ha factures rebudes"
+              hint="Puja PDF o fotos de tiquets. Els PDF amb text es llegeixen al moment; les fotos passen per OCR."
+              action={
+                <Button onClick={() => setUploading(true)}>
+                  <UploadIcon /> Puja factures
+                </Button>
+              }
+            />
+          ) : (
+            <section aria-label="Factures rebudes" className="flex flex-col gap-3">
+              <Segmented
+                label="Filtra les despeses"
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  ["ALL", "Totes", rows.length],
+                  ["UNCATEGORIZED", "Sense categoria", uncategorized.length],
+                  ["PENDING", "Analitzant", pending.length],
+                  ["FAILED", "No llegibles", failed.length],
+                ]}
+              />
+              {inFlight ? (
+                <p className="text-sm text-muted-foreground" role="status">
+                  Hi ha factures en anàlisi. La llista s’actualitza sola.
+                </p>
+              ) : null}
+              {visible.length === 0 ? (
+                <EmptyState title="Cap despesa amb aquest filtre" />
+              ) : (
+                <>
+                  <div className="hidden overflow-hidden rounded-xl border md:block">
+                    <Table>
+                      <TableHeader className="bg-muted/40">
+                        <TableRow>
+                          <TableHead>Proveïdor</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead className="text-right">IVA</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                          <TableHead>Estat</TableHead>
+                          <TableHead className="w-44">Categoria</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {visible.map((row) => (
+                          <TableRow key={row.id}>
+                            <TableCell className="font-medium">
+                              {row.vendorName ?? <span className="text-muted-foreground">Proveïdor pendent</span>}
+                              {row.invoiceNumber ? <span className="block text-xs font-normal text-muted-foreground">{row.invoiceNumber}</span> : null}
+                            </TableCell>
+                            <TableCell>{formatDate(row.invoiceDate)}</TableCell>
+                            <TableCell className="text-right tabular-nums">{euros(row.taxAmountCents)}</TableCell>
+                            <TableCell className="text-right font-medium tabular-nums">{euros(row.totalAmountCents)}</TableCell>
+                            <TableCell>
+                              <ExpenseStatusBadge status={row.status} />
+                            </TableCell>
+                            <TableCell>
+                              <CategorySelect row={row} disabled={saving === row.id} onSave={saveCategory} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <ul className="flex flex-col gap-2 md:hidden">
+                    {visible.map((row) => (
+                      <li key={row.id} className="flex flex-col gap-3 rounded-xl border p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{row.vendorName ?? "Proveïdor pendent"}</p>
+                            <p className="text-sm text-muted-foreground">{formatDate(row.invoiceDate)}</p>
+                          </div>
+                          <ExpenseStatusBadge status={row.status} />
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-lg font-semibold tabular-nums">{euros(row.totalAmountCents)}</p>
+                          <div className="w-40">
+                            <CategorySelect row={row} disabled={saving === row.id} onSave={saveCategory} />
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+          )}
+        </>
+      ) : null}
+
+      <UploadDialog
+        open={uploading}
+        onOpenChange={setUploading}
+        title="Puja factures rebudes"
+        description="PDF, PNG o JPG. Es desen en privat i se n’extreuen els imports automàticament."
+        accept="application/pdf,image/png,image/jpeg"
+        extensions={[".pdf", ".png", ".jpg", ".jpeg"]}
+        multiple
+        submitLabel={(count) => (count > 1 ? `Puja ${count} factures` : "Puja la factura")}
+        onUpload={upload}
+      />
     </>
   );
 }
 
-function ExpenseStatus({ status }: { status: string }) {
-  const entry = STATUS[status] ?? { label: status, tone: "neutral" as const };
-  return <StatusBadge tone={entry.tone}>{entry.label}</StatusBadge>;
-}
-
-function CategorySelect({ row, onSave }: { row: Expense; onSave: (row: Expense, category: string) => void }) {
+function CategorySelect({ row, disabled, onSave }: { row: Expense; disabled: boolean; onSave: (row: Expense, category: string) => void }) {
   if (row.status !== "PARSED") {
-    return <span className="text-xs text-muted-foreground">Disponible quan s’analitzi</span>;
+    return <span className="text-xs text-muted-foreground">Quan s’analitzi</span>;
   }
   return (
     <NativeSelect
-      aria-label="Categoria"
+      aria-label={`Categoria de ${row.vendorName ?? "la despesa"}`}
       value={row.expenseCategory ?? ""}
+      disabled={disabled}
       onChange={(event) => event.target.value && onSave(row, event.target.value)}
     >
-      <option value="" disabled>Sense categoria</option>
+      <option value="" disabled>
+        Sense categoria
+      </option>
       {CATEGORIES.map(([code, label]) => (
-        <option key={code} value={code}>{label}</option>
+        <option key={code} value={code}>
+          {label}
+        </option>
       ))}
     </NativeSelect>
   );
