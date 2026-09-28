@@ -6,6 +6,9 @@ export function createStorageClient(config: S3Config): S3Client {
     endpoint: config.endpoint,
     region: config.region,
     forcePathStyle: config.forcePathStyle,
+    // S3-compatible stores (Supabase Storage, MinIO) do not all accept the SDK's default CRC32 headers.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: config.accessKey,
       secretAccessKey: config.secretKey,

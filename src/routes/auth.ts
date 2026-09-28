@@ -1,8 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client.js";
-import { checkPassword, hashPassword, openSession, readEmail, readPassword, SESSION_COOKIE, userIdFromRequest } from "../auth/session.js";
+import type { CookieConfig } from "../config.js";
+import {
+  checkPassword,
+  hashPassword,
+  LOCAL_COOKIE,
+  openSession,
+  readEmail,
+  readPassword,
+  SESSION_COOKIE,
+  sessionCookieAttributes,
+  userIdFromRequest,
+} from "../auth/session.js";
 
-export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): void {
+export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient, cookie: CookieConfig = LOCAL_COOKIE): void {
   app.post("/auth/register", async (request, reply) => {
     const body = request.body as {
       email?: unknown;
@@ -55,7 +66,7 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
     if (organization === undefined) {
       return reply.code(500).send({ error: "Organization was not created" });
     }
-    await openSession(prisma, reply, user.id);
+    await openSession(prisma, reply, user.id, cookie);
     return reply.code(201).send({
       id: user.id,
       email: user.email,
@@ -78,7 +89,7 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
     if (user === null || !(await checkPassword(password, user.passwordHash))) {
       return reply.code(401).send({ error: "Invalid email or password" });
     }
-    await openSession(prisma, reply, user.id);
+    await openSession(prisma, reply, user.id, cookie);
     return reply.send(presentUser(user));
   });
 
@@ -87,7 +98,7 @@ export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient): 
     if (token) {
       await prisma.session.deleteMany({ where: { token } });
     }
-    reply.clearCookie(SESSION_COOKIE, { path: "/" });
+    reply.clearCookie(SESSION_COOKIE, sessionCookieAttributes(cookie));
     return reply.code(204).send();
   });
 

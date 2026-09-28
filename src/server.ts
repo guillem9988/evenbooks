@@ -27,10 +27,14 @@ import { registerStatementRoutes } from "./routes/statements.js";
 import { startInvoiceWorker } from "./workers/invoice-worker.js";
 
 export async function buildServer(config: AppConfig) {
-  const app = Fastify({ logger: true });
-  const database = createDatabase(config.databaseUrl, (error) => {
-    app.log.warn({ err: error }, "postgres pool error");
-  });
+  const app = Fastify({ logger: true, trustProxy: config.trustProxy });
+  const database = createDatabase(
+    config.databaseUrl,
+    (error) => {
+      app.log.warn({ err: error }, "postgres pool error");
+    },
+    config.database,
+  );
   const redis = new RedisClient(config.redisUrl, (error) => {
     app.log.warn({ err: error }, "redis client error");
   });
@@ -41,16 +45,17 @@ export async function buildServer(config: AppConfig) {
     { get: (key) => getObject(storage, config.s3.bucket, key) },
     config.redisUrl,
     config.openaiApiKey,
+    config.worker,
   );
   await app.register(cors, {
-    origin: ["http://127.0.0.1:43124", "http://localhost:43124"],
+    origin: config.webOrigins,
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 20 } });
 
-  registerAuthRoutes(app, database.prisma);
+  registerAuthRoutes(app, database.prisma, config.cookie);
   registerOrganizationGuard(app, database.prisma);
   registerHealthRoutes(app, {
     checkPostgres: () => checkPostgres(database.prisma),
@@ -81,7 +86,10 @@ export async function buildServer(config: AppConfig) {
     storage.destroy();
   });
 
-  app.log.info({ queue: INVOICE_PROCESSING_QUEUE }, "invoice processing worker started");
+  app.log.info(
+    { queue: INVOICE_PROCESSING_QUEUE, webOrigins: config.webOrigins, databaseSsl: config.database.ssl, cookieSameSite: config.cookie.sameSite },
+    "invoice processing worker started in the API process",
+  );
 
   return app;
 }

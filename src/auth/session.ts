@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client.js";
+import type { CookieConfig } from "../config.js";
 
 export const SESSION_COOKIE = "mi_session";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
@@ -34,15 +35,26 @@ export function readEmail(value: unknown): string | Error {
   return value.trim().toLowerCase().slice(0, 255);
 }
 
-export async function openSession(prisma: PrismaClient, reply: FastifyReply, userId: string): Promise<void> {
+export const LOCAL_COOKIE: CookieConfig = { secure: false, sameSite: "lax", domain: null };
+
+/** Attributes shared by setCookie and clearCookie; the browser only clears a cookie when they match. */
+export function sessionCookieAttributes(cookie: CookieConfig) {
+  return {
+    httpOnly: true,
+    secure: cookie.secure,
+    sameSite: cookie.sameSite,
+    path: "/",
+    ...(cookie.domain ? { domain: cookie.domain } : {}),
+  };
+}
+
+export async function openSession(prisma: PrismaClient, reply: FastifyReply, userId: string, cookie: CookieConfig = LOCAL_COOKIE): Promise<void> {
   const token = randomBytes(32).toString("hex");
   await prisma.session.create({
     data: { token, userId, expiresAt: new Date(Date.now() + 4 * WEEK) },
   });
   reply.setCookie(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
+    ...sessionCookieAttributes(cookie),
     maxAge: 4 * 7 * 24 * 60 * 60,
   });
 }

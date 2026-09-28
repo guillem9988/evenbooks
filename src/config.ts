@@ -9,80 +9,201 @@ export interface S3Config {
   forcePathStyle: boolean;
 }
 
+export type DatabaseSslMode = "disable" | "no-verify" | "verify";
+
+export interface DatabaseConfig {
+  ssl: DatabaseSslMode;
+  caCert: string | null;
+  poolMax: number;
+}
+
+export type SameSite = "lax" | "strict" | "none";
+
+export interface CookieConfig {
+  secure: boolean;
+  sameSite: SameSite;
+  domain: string | null;
+}
+
+export interface WorkerConfig {
+  drainDelaySeconds: number;
+  stalledIntervalMs: number;
+}
+
 export interface AppConfig {
   nodeEnv: string;
   host: string;
   port: number;
   databaseUrl: string;
+  database: DatabaseConfig;
   redisUrl: string;
   s3: S3Config;
   openaiApiKey: string | null;
+  webOrigins: string[];
+  cookie: CookieConfig;
+  trustProxy: boolean;
+  worker: WorkerConfig;
 }
 
 const DEFAULT_DATABASE_URL =
   "postgresql://matchinvoice:matchinvoice@localhost:54329/matchinvoice";
 const DEFAULT_REDIS_URL = "redis://localhost:63799";
+const LOCAL_WEB_ORIGINS = ["http://127.0.0.1:43124", "http://localhost:43124"];
 
-function readString(name: string, fallback: string): string {
-  const value = process.env[name];
+type Env = Record<string, string | undefined>;
+
+function readString(env: Env, name: string, fallback: string): string {
+  const value = env[name];
   if (value === undefined || value.trim() === "") {
     return fallback;
   }
-  return value;
+  return value.trim();
 }
 
-function readPort(name: string, fallback: number): number {
-  const raw = process.env[name];
+function readInteger(env: Env, name: string, fallback: number, min: number, max: number): number {
+  const raw = env[name];
   if (raw === undefined || raw.trim() === "") {
     return fallback;
   }
   const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-    throw new Error(`${name} must be an integer port between 1 and 65535`);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
   }
   return parsed;
 }
 
-function readBoolean(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
+function readBoolean(env: Env, name: string, fallback: boolean): boolean {
+  const raw = env[name];
   if (raw === undefined || raw.trim() === "") {
     return fallback;
   }
-  if (raw === "true" || raw === "1") {
+  const value = raw.trim().toLowerCase();
+  if (value === "true" || value === "1") {
     return true;
   }
-  if (raw === "false" || raw === "0") {
+  if (value === "false" || value === "0") {
     return false;
   }
   throw new Error(`${name} must be true or false`);
 }
 
-export function loadConfig(): AppConfig {
-  const databaseUrl = readString("DATABASE_URL", DEFAULT_DATABASE_URL);
-  process.env.DATABASE_URL = databaseUrl;
-
-  return {
-    nodeEnv: readString("NODE_ENV", "development"),
-    host: readString("HOST", "0.0.0.0"),
-    port: readPort("PORT", 43123),
-    databaseUrl,
-    redisUrl: readString("REDIS_URL", DEFAULT_REDIS_URL),
-    s3: {
-      endpoint: readString("S3_ENDPOINT", "http://localhost:59000"),
-      region: readString("S3_REGION", "us-east-1"),
-      bucket: readString("S3_BUCKET", "matchinvoice"),
-      accessKey: readString("S3_ACCESS_KEY", "matchinvoice"),
-      secretKey: readString("S3_SECRET_KEY", "matchinvoice-secret"),
-      forcePathStyle: readBoolean("S3_FORCE_PATH_STYLE", true),
-    },
-    openaiApiKey: optionalString("OPENAI_API_KEY"),
-  };
-}
-
-function optionalString(name: string): string | null {
-  const value = process.env[name];
+function optionalString(env: Env, name: string): string | null {
+  const value = env[name];
   if (value === undefined || value.trim() === "") {
     return null;
   }
-  return value;
+  return value.trim();
+}
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+}
+
+/**
+ * Hosted Postgres (Supabase) needs TLS. `DATABASE_SSL` wins; otherwise the URL's `sslmode`
+ * decides, and production defaults to TLS for any non-local host.
+ */
+export function resolveDatabaseSsl(databaseUrl: string, explicit: string | null, production: boolean, hasCa: boolean): DatabaseSslMode {
+  if (explicit !== null) {
+    if (explicit !== "disable" && explicit !== "no-verify" && explicit !== "verify") {
+      throw new Error("DATABASE_SSL must be disable, no-verify, or verify");
+    }
+    return explicit;
+  }
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error("DATABASE_URL must be a postgresql:// URL");
+  }
+  const sslmode = url.searchParams.get("sslmode");
+  if (sslmode === "disable") {
+    return "disable";
+  }
+  if (sslmode === "verify-full" || sslmode === "verify-ca") {
+    return "verify";
+  }
+  if (sslmode === "require" || sslmode === "prefer" || sslmode === "no-verify" || url.searchParams.get("ssl") === "true") {
+    return hasCa ? "verify" : "no-verify";
+  }
+  if (production && !isLocalHost(url.hostname)) {
+    return hasCa ? "verify" : "no-verify";
+  }
+  return "disable";
+}
+
+export function readWebOrigins(raw: string | null, production: boolean): string[] {
+  const configured = (raw ?? "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter((origin) => origin !== "");
+  for (const origin of configured) {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new Error(`WEB_ORIGIN has an invalid origin: ${origin}`);
+    }
+    if (parsed.origin !== origin) {
+      throw new Error(`WEB_ORIGIN must be an origin like https://app.example.com, not ${origin}`);
+    }
+  }
+  if (production) {
+    if (configured.length === 0) {
+      throw new Error("WEB_ORIGIN is required in production (the URL of the web panel)");
+    }
+    return configured;
+  }
+  return [...new Set([...configured, ...LOCAL_WEB_ORIGINS])];
+}
+
+export function readCookieConfig(env: Env, production: boolean): CookieConfig {
+  const sameSite = readString(env, "COOKIE_SAME_SITE", production ? "none" : "lax").toLowerCase();
+  if (sameSite !== "lax" && sameSite !== "strict" && sameSite !== "none") {
+    throw new Error("COOKIE_SAME_SITE must be lax, strict, or none");
+  }
+  const secure = readBoolean(env, "COOKIE_SECURE", production);
+  if (sameSite === "none" && !secure) {
+    throw new Error("COOKIE_SAME_SITE=none needs COOKIE_SECURE=true; browsers drop it otherwise");
+  }
+  return { sameSite, secure, domain: optionalString(env, "COOKIE_DOMAIN") };
+}
+
+export function loadConfig(env: Env = process.env): AppConfig {
+  const databaseUrl = readString(env, "DATABASE_URL", DEFAULT_DATABASE_URL);
+  if (env === process.env) {
+    process.env.DATABASE_URL = databaseUrl;
+  }
+  const nodeEnv = readString(env, "NODE_ENV", "development");
+  const production = nodeEnv === "production";
+  const caCert = optionalString(env, "DATABASE_CA_CERT")?.replace(/\\n/g, "\n") ?? null;
+
+  return {
+    nodeEnv,
+    host: readString(env, "HOST", "0.0.0.0"),
+    port: readInteger(env, "PORT", 43123, 1, 65535),
+    databaseUrl,
+    database: {
+      ssl: resolveDatabaseSsl(databaseUrl, optionalString(env, "DATABASE_SSL"), production, caCert !== null),
+      caCert,
+      poolMax: readInteger(env, "DATABASE_POOL_MAX", 10, 1, 100),
+    },
+    redisUrl: readString(env, "REDIS_URL", DEFAULT_REDIS_URL),
+    s3: {
+      endpoint: readString(env, "S3_ENDPOINT", "http://localhost:59000"),
+      region: readString(env, "S3_REGION", "us-east-1"),
+      bucket: readString(env, "S3_BUCKET", "matchinvoice"),
+      accessKey: readString(env, "S3_ACCESS_KEY", "matchinvoice"),
+      secretKey: readString(env, "S3_SECRET_KEY", "matchinvoice-secret"),
+      forcePathStyle: readBoolean(env, "S3_FORCE_PATH_STYLE", true),
+    },
+    openaiApiKey: optionalString(env, "OPENAI_API_KEY"),
+    webOrigins: readWebOrigins(optionalString(env, "WEB_ORIGIN"), production),
+    cookie: readCookieConfig(env, production),
+    trustProxy: readBoolean(env, "TRUST_PROXY", production),
+    worker: {
+      drainDelaySeconds: readInteger(env, "BULLMQ_DRAIN_DELAY_SECONDS", 5, 1, 3600),
+      stalledIntervalMs: readInteger(env, "BULLMQ_STALLED_INTERVAL_MS", 30_000, 5_000, 3_600_000),
+    },
+  };
 }

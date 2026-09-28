@@ -21,6 +21,10 @@ export interface HealthChecks {
 const HEALTH_TIMEOUT_MS = 3_000;
 
 export function registerHealthRoutes(app: FastifyInstance, checks: HealthChecks): void {
+  // Liveness for platform health checks. It touches no dependency, so frequent probes
+  // do not spend the hosted Redis command quota.
+  app.get("/health/live", async (_request, reply) => reply.send({ status: "ok" }));
+
   app.get("/health", async (_request, reply) => {
     const [postgres, redis, minio] = await Promise.all([
       runCheck(checks.checkPostgres),
