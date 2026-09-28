@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { FileIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FormDialog, notifyError } from "@/components/ui-kit";
+import { useT } from "@/i18n";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -28,6 +29,7 @@ export function UploadDialog({
   submitLabel: (count: number) => string;
   onUpload: (files: File[]) => Promise<void>;
 }) {
+  const t = useT();
   const inputId = useId();
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -38,11 +40,11 @@ export function UploadDialog({
     const wrong = picked.find((file) => !extensions.some((extension) => file.name.toLowerCase().endsWith(extension)));
     const large = picked.find((file) => file.size > MAX_BYTES);
     if (wrong) {
-      setError(`${wrong.name} no és un format acceptat (${extensions.join(", ")}).`);
+      setError(t("upload.wrongFormat", { name: wrong.name, ext: extensions.join(", ") }));
     } else if (large) {
-      setError(`${large.name} fa més de 10 MB.`);
+      setError(t("upload.tooLarge", { name: large.name }));
     } else if (multiple && picked.length > 20) {
-      setError("Com a màxim 20 fitxers cada cop.");
+      setError(t("upload.tooMany"));
     } else {
       setError(null);
     }
@@ -51,7 +53,7 @@ export function UploadDialog({
 
   async function submit() {
     if (files.length === 0) {
-      setError("Tria almenys un fitxer.");
+      setError(t("upload.pickAtLeast"));
       return;
     }
     if (error) return;
@@ -61,7 +63,7 @@ export function UploadDialog({
       setFiles([]);
       onOpenChange(false);
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut pujar");
+      notifyError(cause, t("upload.uploadFailed"));
     } finally {
       setBusy(false);
     }
@@ -88,9 +90,10 @@ export function UploadDialog({
         className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-8 text-center transition-colors hover:bg-muted/40 has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
       >
         <FileIcon className="size-6 text-muted-foreground" aria-hidden />
-        <span className="text-sm font-medium">{multiple ? "Tria els fitxers" : "Tria el fitxer"}</span>
+        <span className="text-sm font-medium">{multiple ? t("upload.pickFiles") : t("upload.pickFile")}</span>
         <span className="text-xs text-muted-foreground">
-          {extensions.join(", ")} · fins a 10 MB{multiple ? " cadascun" : ""}
+          {extensions.join(", ")} · {t("upload.upTo")}
+          {multiple ? t("upload.each") : ""}
         </span>
         <input
           id={inputId}
@@ -112,7 +115,7 @@ export function UploadDialog({
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label={`Treu ${file.name}`}
+                aria-label={t("upload.removeFile", { name: file.name })}
                 onClick={() => {
                   const rest = files.filter((_, position) => position !== index);
                   setFiles(rest);

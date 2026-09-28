@@ -34,6 +34,7 @@ import {
   useLoad,
   type Period,
 } from "@/components/ui-kit";
+import { useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { euros } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -87,6 +88,7 @@ interface Task {
 }
 
 export default function HomePage() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const [period, setPeriod] = useState<Period>(() => currentPeriod("quarter"));
   const { from, to } = periodRange(period);
@@ -102,14 +104,14 @@ export default function HomePage() {
     return { dashboard, invoices: issued.issuedInvoices, expenses: spent.expenses, quotes: listed.quotes };
   }, [organizationId, from, to]);
 
-  const { data, error, loading, reload } = useLoad(load, "No s’ha pogut carregar el resum");
+  const { data, error, loading, reload } = useLoad(load, t("home.loadFailed"));
   const showSkeleton = loading;
 
   return (
     <>
       <PageHeader
-        title="Inici"
-        description={`Resum del ${periodLabel(period)}: el que has facturat, el que has gastat i el que està pendent.`}
+        title={t("home.title")}
+        description={t("home.description", { period: periodLabel(period) })}
         actions={<PeriodPicker value={period} onChange={setPeriod} />}
       />
       <ErrorBanner message={error} onRetry={reload} />
@@ -129,6 +131,7 @@ export default function HomePage() {
 }
 
 function Overview({ data }: { data: OverviewData }) {
+  const t = useT();
   const { dashboard, invoices, expenses, quotes } = data;
   const vatBalance = (BigInt(dashboard.ivaRepercutitCents) - BigInt(dashboard.ivaSuportatCents)).toString();
   const unpaid = invoices.filter((invoice) => invoice.status === "UNPAID" && !invoice.totalAmountCents.startsWith("-"));
@@ -143,10 +146,10 @@ function Overview({ data }: { data: OverviewData }) {
     tasks.push({
       key: "overdue",
       icon: AlertCircleIcon,
-      title: `${overdue.length} ${overdue.length === 1 ? "factura vençuda" : "factures vençudes"}`,
-      detail: `Emeses fa més de 30 dies i encara pendents: ${euros(sumCents(overdue.map((invoice) => invoice.totalAmountCents)))}.`,
+      title: overdue.length === 1 ? t("home.overdueOne") : t("home.overdueMany", { count: overdue.length }),
+      detail: t("home.overdueDetail", { amount: euros(sumCents(overdue.map((invoice) => invoice.totalAmountCents))) }),
       href: "/ingressos",
-      cta: "Revisa els cobraments",
+      cta: t("home.overdueCta"),
       tone: "danger",
     });
   }
@@ -154,10 +157,13 @@ function Overview({ data }: { data: OverviewData }) {
     tasks.push({
       key: "bank",
       icon: LandmarkIcon,
-      title: `${dashboard.unmatchedBankLines} ${dashboard.unmatchedBankLines === 1 ? "moviment sense conciliar" : "moviments sense conciliar"}`,
-      detail: "Moviments del banc d’aquest període que encara no tenen factura.",
+      title:
+        dashboard.unmatchedBankLines === 1
+          ? t("home.bankOne")
+          : t("home.bankMany", { count: dashboard.unmatchedBankLines }),
+      detail: t("home.bankDetail"),
       href: "/banc",
-      cta: "Concilia el banc",
+      cta: t("home.bankCta"),
       tone: "warning",
     });
   }
@@ -165,10 +171,10 @@ function Overview({ data }: { data: OverviewData }) {
     tasks.push({
       key: "failed",
       icon: ReceiptIcon,
-      title: `${failed.length} ${failed.length === 1 ? "despesa no llegible" : "despeses no llegibles"}`,
-      detail: "No se n’han pogut extreure els imports. Torna a pujar-les amb més qualitat.",
+      title: failed.length === 1 ? t("home.failedOne") : t("home.failedMany", { count: failed.length }),
+      detail: t("home.failedDetail"),
       href: "/despeses",
-      cta: "Obre les despeses",
+      cta: t("home.failedCta"),
       tone: "danger",
     });
   }
@@ -176,10 +182,13 @@ function Overview({ data }: { data: OverviewData }) {
     tasks.push({
       key: "uncategorized",
       icon: ReceiptIcon,
-      title: `${uncategorized.length} ${uncategorized.length === 1 ? "despesa sense categoria" : "despeses sense categoria"}`,
-      detail: "Classifica-les perquè el resum de despeses sigui útil.",
+      title:
+        uncategorized.length === 1
+          ? t("home.uncategorizedOne")
+          : t("home.uncategorizedMany", { count: uncategorized.length }),
+      detail: t("home.uncategorizedDetail"),
       href: "/despeses",
-      cta: "Classifica",
+      cta: t("home.uncategorizedCta"),
       tone: "info",
     });
   }
@@ -187,10 +196,10 @@ function Overview({ data }: { data: OverviewData }) {
     tasks.push({
       key: "quotes",
       icon: FileTextIcon,
-      title: `${openQuotes.length} ${openQuotes.length === 1 ? "pressupost obert" : "pressupostos oberts"}`,
-      detail: `Per valor de ${euros(sumCents(openQuotes.map((quote) => quote.totalAmountCents)))}. Converteix-los quan el client accepti.`,
+      title: openQuotes.length === 1 ? t("home.quoteOne") : t("home.quoteMany", { count: openQuotes.length }),
+      detail: t("home.quoteDetail", { amount: euros(sumCents(openQuotes.map((quote) => quote.totalAmountCents))) }),
       href: "/pressupostos",
-      cta: "Veure pressupostos",
+      cta: t("home.quoteCta"),
       tone: "info",
     });
   }
@@ -200,19 +209,22 @@ function Overview({ data }: { data: OverviewData }) {
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Ingressos" value={euros(dashboard.incomeCents)} hint="Total de les factures emeses" icon={BanknoteIcon} />
-        <KpiCard label="Despeses" value={euros(dashboard.expenseCents)} hint="Factures rebudes analitzades" icon={ReceiptIcon} />
+        <KpiCard label={t("home.income")} value={euros(dashboard.incomeCents)} hint={t("home.incomeHint")} icon={BanknoteIcon} />
+        <KpiCard label={t("home.expenses")} value={euros(dashboard.expenseCents)} hint={t("home.expensesHint")} icon={ReceiptIcon} />
         <KpiCard
-          label="Benefici"
+          label={t("home.profit")}
           value={euros(dashboard.profitCents)}
-          hint="Ingressos menys despeses"
+          hint={t("home.profitHint")}
           icon={TrendingUpIcon}
           tone={dashboard.profitCents.startsWith("-") ? "negative" : "positive"}
         />
         <KpiCard
-          label={vatBalance.startsWith("-") ? "IVA a compensar" : "IVA a ingressar"}
+          label={vatBalance.startsWith("-") ? t("home.vatCredit") : t("home.vatDue")}
           value={euros(vatBalance.replace("-", ""))}
-          hint={`Repercutit ${euros(dashboard.ivaRepercutitCents)} · suportat ${euros(dashboard.ivaSuportatCents)}`}
+          hint={t("home.vatHint", {
+            output: euros(dashboard.ivaRepercutitCents),
+            input: euros(dashboard.ivaSuportatCents),
+          })}
           icon={ScaleIcon}
         />
       </div>
@@ -220,14 +232,14 @@ function Overview({ data }: { data: OverviewData }) {
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Què cal fer</CardTitle>
-            <CardDescription>El que necessita la teva atenció ara mateix.</CardDescription>
+            <CardTitle>{t("home.todo")}</CardTitle>
+            <CardDescription>{t("home.todoHint")}</CardDescription>
           </CardHeader>
           <CardContent>
             {tasks.length === 0 ? (
               <div className="flex items-center gap-3 rounded-lg border border-dashed p-4 text-sm">
                 <CheckCircle2Icon className="size-5 text-emerald-600" aria-hidden />
-                <span>Tot al dia. No hi ha res pendent de revisar.</span>
+                <span>{t("home.allClear")}</span>
               </div>
             ) : (
               <ul className="flex flex-col divide-y">
@@ -262,23 +274,23 @@ function Overview({ data }: { data: OverviewData }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Pendent de cobrament</CardTitle>
-            <CardDescription>Totes les factures emeses que encara no has cobrat.</CardDescription>
+            <CardTitle>{t("home.unpaid")}</CardTitle>
+            <CardDescription>{t("home.unpaidHint")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div>
               <p className="text-3xl font-semibold tracking-tight tabular-nums">{euros(unpaidTotal)}</p>
               <p className="text-sm text-muted-foreground">
-                {unpaid.length} {unpaid.length === 1 ? "factura" : "factures"}
-                {overdue.length > 0 ? ` · ${overdue.length} de fa més de 30 dies` : ""}
+                {unpaid.length} {unpaid.length === 1 ? t("home.invoice") : t("home.invoices")}
+                {overdue.length > 0 ? t("home.overdueSuffix", { count: overdue.length }) : ""}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Button render={<Link href="/ingressos?nova=1" />}>
-                <PlusIcon /> Nova factura
+                <PlusIcon /> {t("home.newInvoice")}
               </Button>
               <Button variant="outline" render={<Link href="/banc" />}>
-                <LandmarkIcon /> Importa el banc
+                <LandmarkIcon /> {t("home.importBank")}
               </Button>
             </div>
           </CardContent>
@@ -288,21 +300,21 @@ function Overview({ data }: { data: OverviewData }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <div>
-            <CardTitle>Últimes factures</CardTitle>
-            <CardDescription>Les cinc més recents.</CardDescription>
+            <CardTitle>{t("home.recent")}</CardTitle>
+            <CardDescription>{t("home.recentHint")}</CardDescription>
           </div>
           <Button variant="ghost" size="sm" render={<Link href="/ingressos" />}>
-            Totes <ArrowRightIcon />
+            {t("home.seeAll")} <ArrowRightIcon />
           </Button>
         </CardHeader>
         <CardContent>
           {recent.length === 0 ? (
             <EmptyState
-              title="Encara no has emès cap factura"
-              hint="Crea la primera i apareixerà aquí."
+              title={t("home.emptyInvoices")}
+              hint={t("home.emptyInvoicesHint")}
               action={
                 <Button render={<Link href="/ingressos?nova=1" />}>
-                  <PlusIcon /> Nova factura
+                  <PlusIcon /> {t("home.newInvoice")}
                 </Button>
               }
             />

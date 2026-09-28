@@ -25,6 +25,7 @@ import {
   useLoad,
 } from "@/components/ui-kit";
 import { UploadDialog } from "@/components/upload-dialog";
+import { useT } from "@/i18n";
 import { api, apiPath } from "@/lib/api";
 import { euros } from "@/lib/money";
 
@@ -70,6 +71,7 @@ interface ReviewPayload {
 type Tab = "suggestions" | "matched";
 
 export function ReviewDesk() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const initialRange = quarterRange(currentQuarter());
   const [from, setFrom] = useState(initialRange.from);
@@ -85,7 +87,7 @@ export function ReviewDesk() {
     return { suggestions: body.suggestions ?? [], autoMatched: body.autoMatched ?? [] };
   }, [organizationId]);
 
-  const { data: review, error, initialLoading, loading, reload } = useLoad(load, "No s’ha pogut carregar la revisió");
+  const { data: review, error, initialLoading, loading, reload } = useLoad(load, t("bank.loadFailed"));
 
   async function run(key: string, action: () => Promise<string>, fallback: string) {
     setBusy(key);
@@ -104,7 +106,7 @@ export function ReviewDesk() {
     const form = new FormData();
     form.set("file", file);
     const body = await api<{ totalTransactions: number }>(`/organizations/${organizationId}/statements`, { method: "POST", body: form });
-    notifySuccess(`Extracte importat: ${body.totalTransactions} moviments. Ara pots conciliar.`);
+    notifySuccess(t("bank.imported", { count: body.totalTransactions }));
     await reload();
   }
 
@@ -112,7 +114,7 @@ export function ReviewDesk() {
     const form = new FormData();
     for (const file of files) form.append("files", file);
     const body = await api<{ invoiceIds: string[] }>(`/organizations/${organizationId}/invoices`, { method: "POST", body: form });
-    notifySuccess(`${body.invoiceIds.length} ${body.invoiceIds.length === 1 ? "factura a la cua" : "factures a la cua"} d’anàlisi. Apareixeran a Despeses.`);
+    notifySuccess(body.invoiceIds.length === 1 ? t("bank.queuedOne") : t("bank.queuedMany", { count: body.invoiceIds.length }));
   }
 
   const reconcile = () =>
@@ -121,9 +123,9 @@ export function ReviewDesk() {
       async () => {
         const body = await api<{ confirmed: unknown[]; suggestions: unknown[] }>(`/organizations/${organizationId}/reconcile`, { method: "POST" });
         await reload();
-        return `Conciliació feta: ${body.confirmed.length} automàtiques i ${body.suggestions.length} suggeriments per revisar.`;
+        return t("bank.reconcileDone", { auto: body.confirmed.length, suggestions: body.suggestions.length });
       },
-      "No s’ha pogut conciliar",
+      t("bank.reconcileFailed"),
     );
 
   const confirm = (row: Suggestion) =>
@@ -135,9 +137,9 @@ export function ReviewDesk() {
           body: JSON.stringify({ transactionId: row.transaction.id, invoiceId: row.invoice.id }),
         });
         await reload();
-        return "Suggeriment confirmat.";
+        return t("bank.confirmed");
       },
-      "No s’ha pogut confirmar",
+      t("bank.confirmFailed"),
     );
 
   async function reject() {
@@ -148,9 +150,9 @@ export function ReviewDesk() {
         await api(`/organizations/${organizationId}/reconciliation/matches/${rejecting.id}/reject`, { method: "POST" });
         setRejecting(null);
         await reload();
-        return "Conciliació desfeta. El moviment torna a estar pendent.";
+        return t("bank.undone");
       },
-      "No s’ha pogut desfer",
+      t("bank.undoFailed"),
     );
   }
 
@@ -162,18 +164,18 @@ export function ReviewDesk() {
   return (
     <>
       <PageHeader
-        title="Banc"
-        description="Importa l’extracte i les factures, concilia i revisa el que el sistema no ha pogut confirmar sol."
+        title={t("bank.title")}
+        description={t("bank.description")}
         actions={
           <>
             <Button variant="outline" onClick={() => setImporting(true)}>
-              <FileSpreadsheetIcon /> Importa l’extracte
+              <FileSpreadsheetIcon /> {t("bank.importStatement")}
             </Button>
             <Button variant="outline" onClick={() => setUploading(true)}>
-              <UploadIcon /> Puja factures
+              <UploadIcon /> {t("bank.uploadInvoices")}
             </Button>
             <Button disabled={busy !== null} onClick={reconcile}>
-              <SparklesIcon /> {busy === "reconcile" ? "Conciliant…" : "Concilia ara"}
+              <SparklesIcon /> {busy === "reconcile" ? t("bank.reconciling") : t("bank.reconcile")}
             </Button>
           </>
         }
@@ -181,21 +183,21 @@ export function ReviewDesk() {
       <ErrorBanner message={error} onRetry={reload} />
 
       <Section
-        title="Revisió"
-        description="Suggeriments amb confiança entre 0,65 i 0,88, i les conciliacions automàtiques per si cal desfer-ne alguna."
+        title={t("bank.review")}
+        description={t("bank.reviewHint")}
         actions={
           <Button variant="ghost" size="sm" disabled={loading} onClick={() => void reload()}>
-            <RefreshCwIcon /> Actualitza
+            <RefreshCwIcon /> {t("bank.refresh")}
           </Button>
         }
       >
         <Segmented
-          label="Tipus de conciliació"
+          label={t("bank.review")}
           value={tab}
           onChange={setTab}
           options={[
-            ["suggestions", "Per revisar", suggestions.length],
-            ["matched", "Conciliades", matched.length],
+            ["suggestions", t("bank.tabSuggestions"), suggestions.length],
+            ["matched", t("bank.tabMatched"), matched.length],
           ]}
         />
         {initialLoading ? (
@@ -204,11 +206,11 @@ export function ReviewDesk() {
           suggestions.length === 0 ? (
             <EmptyState
               icon={LandmarkIcon}
-              title="No hi ha suggeriments pendents"
-              hint="Importa un extracte i puja factures; després prem Concilia ara."
+              title={t("bank.emptySuggestions")}
+              hint={t("bank.emptySuggestionsHint")}
               action={
                 <Button variant="outline" onClick={() => setImporting(true)}>
-                  <FileSpreadsheetIcon /> Importa l’extracte
+                  <FileSpreadsheetIcon /> {t("bank.importStatement")}
                 </Button>
               }
             />
@@ -221,7 +223,7 @@ export function ReviewDesk() {
                   kind="suggestion"
                   action={
                     <Button size="sm" disabled={busy !== null} onClick={() => confirm(row)}>
-                      <CheckIcon /> {busy === row.transaction.id ? "Confirmant…" : "Confirma"}
+                      <CheckIcon /> {busy === row.transaction.id ? t("bank.confirming") : t("bank.confirm")}
                     </Button>
                   }
                 />
@@ -229,7 +231,7 @@ export function ReviewDesk() {
             </ul>
           )
         ) : matched.length === 0 ? (
-          <EmptyState title="Encara no hi ha conciliacions automàtiques" hint="Quan la confiança supera 0,88 es concilien soles i apareixen aquí." />
+          <EmptyState title={t("bank.emptyMatched")} hint={t("bank.emptyMatchedHint")} />
         ) : (
           <ul className="flex flex-col gap-2">
             {matched.map((row) => (
@@ -239,7 +241,7 @@ export function ReviewDesk() {
                 kind={row.transaction.matchStatus === "MANUALLY_MATCHED" ? "manual" : "auto"}
                 action={
                   <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => setRejecting(row)}>
-                    <XIcon /> Desfés
+                    <XIcon /> {t("bank.undo")}
                   </Button>
                 }
               />
@@ -250,18 +252,18 @@ export function ReviewDesk() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Paquet per a la gestoria</CardTitle>
-          <CardDescription>ZIP amb el resum de moviments, les factures reanomenades i les despeses sense justificant.</CardDescription>
+          <CardTitle>{t("bank.packTitle")}</CardTitle>
+          <CardDescription>{t("bank.packDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
-          <Field id="zip-from" label="Des de">
+          <Field id="zip-from" label={t("common.from")}>
             <Input id="zip-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
           </Field>
-          <Field id="zip-to" label="Fins a" error={from && to && from > to ? "Ha de ser posterior a la data d’inici." : null}>
+          <Field id="zip-to" label={t("common.to")} error={from && to && from > to ? t("validation.dateAfter") : null}>
             <Input id="zip-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
           </Field>
           <Button variant="outline" className="sm:mt-6" disabled={rangeInvalid} render={rangeInvalid ? undefined : <a href={zipUrl} />}>
-            <DownloadIcon /> Descarrega el ZIP
+            <DownloadIcon /> {t("bank.downloadZip")}
           </Button>
         </CardContent>
       </Card>
@@ -269,34 +271,37 @@ export function ReviewDesk() {
       <UploadDialog
         open={importing}
         onOpenChange={setImporting}
-        title="Importa l’extracte bancari"
-        description="CSV, OFX, QFX o Excel (.xlsx) exportat del teu banc."
+        title={t("bank.importTitle")}
+        description={t("bank.importDescription")}
         accept=".csv,.ofx,.qfx,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/x-ofx"
         extensions={[".csv", ".ofx", ".qfx", ".xlsx"]}
-        submitLabel={() => "Importa l’extracte"}
+        submitLabel={() => t("bank.importSubmit")}
         onUpload={uploadStatement}
       />
       <UploadDialog
         open={uploading}
         onOpenChange={setUploading}
-        title="Puja factures rebudes"
-        description="PDF, PNG o JPG. Se n’extreuen els imports automàticament."
+        title={t("bank.uploadTitle")}
+        description={t("bank.uploadDescription")}
         accept="application/pdf,image/png,image/jpeg"
         extensions={[".pdf", ".png", ".jpg", ".jpeg"]}
         multiple
-        submitLabel={(count) => (count > 1 ? `Puja ${count} factures` : "Puja la factura")}
+        submitLabel={(count) => (count > 1 ? t("bank.uploadMany", { count }) : t("bank.uploadOne"))}
         onUpload={uploadInvoices}
       />
       <FormDialog
         open={rejecting !== null}
         onOpenChange={(open) => !open && setRejecting(null)}
-        title="Vols desfer aquesta conciliació?"
+        title={t("bank.undoTitle")}
         description={
           rejecting
-            ? `El moviment «${rejecting.transaction.rawDescription}» de ${euros(rejecting.transaction.amountCents)} tornarà a estar pendent.`
+            ? t("bank.undoDescription", {
+                desc: rejecting.transaction.rawDescription,
+                amount: euros(rejecting.transaction.amountCents),
+              })
             : undefined
         }
-        submitLabel="Desfés la conciliació"
+        submitLabel={t("bank.undoSubmit")}
         busy={rejecting !== null && busy === rejecting.id}
         destructive
         onSubmit={reject}
@@ -306,21 +311,26 @@ export function ReviewDesk() {
 }
 
 function PairRow({ row, kind, action }: { row: Suggestion; kind: MatchKind; action: React.ReactNode }) {
+  const t = useT();
   const score = Number(row.confidenceScore);
   const tone = score >= 0.88 ? "success" : score >= 0.75 ? "warning" : "neutral";
   return (
     <li className="flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">Moviment · {formatDate(row.transaction.transactionDate)}</p>
+          <p className="text-xs tracking-wide text-muted-foreground uppercase">
+            {t("bank.movement")} · {formatDate(row.transaction.transactionDate)}
+          </p>
           <p className="truncate font-medium" title={row.transaction.rawDescription}>
             {row.transaction.rawDescription}
           </p>
           <p className="text-sm tabular-nums">{euros(row.transaction.amountCents)}</p>
         </div>
         <div className="min-w-0">
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">Factura · {formatDate(row.invoice.invoiceDate)}</p>
-          <p className="truncate font-medium">{row.invoice.vendorName ?? "Proveïdor desconegut"}</p>
+          <p className="text-xs tracking-wide text-muted-foreground uppercase">
+            {t("bank.invoice")} · {formatDate(row.invoice.invoiceDate)}
+          </p>
+          <p className="truncate font-medium">{row.invoice.vendorName ?? t("bank.unknownVendor")}</p>
           <p className="text-sm tabular-nums">{euros(row.invoice.totalAmountCents)}</p>
         </div>
       </div>
@@ -328,10 +338,11 @@ function PairRow({ row, kind, action }: { row: Suggestion; kind: MatchKind; acti
         <div className="flex flex-col items-start gap-1 sm:items-end">
           <div className="flex items-center gap-1.5">
             <MatchBadge kind={kind} />
-            <StatusBadge tone={tone}>Confiança {score.toFixed(2).replace(".", ",")}</StatusBadge>
+            <StatusBadge tone={tone}>{t("bank.confidence", { score: score.toFixed(2).replace(".", ",") })}</StatusBadge>
           </div>
           <p className="text-xs text-muted-foreground tabular-nums">
-            import {row.breakdown.amount.score} · data {row.breakdown.date.score} · text {row.breakdown.text.score} · NIF {row.breakdown.vendor.score}
+            {t("bank.scoreAmount")} {row.breakdown.amount.score} · {t("bank.scoreDate")} {row.breakdown.date.score} · {t("bank.scoreText")}{" "}
+            {row.breakdown.text.score} · {t("bank.scoreTaxId")} {row.breakdown.vendor.score}
           </p>
         </div>
         {action}

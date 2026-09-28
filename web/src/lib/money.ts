@@ -32,11 +32,13 @@ export function parseEuroInput(raw: string): string | null {
   return BigInt(`${whole}${fraction.padEnd(2, "0")}`).toString();
 }
 
+export type EuroMessages = { required: string; invalid: string; zero: string };
+
 /** Validation message for a euro field, or null when the value is fine. */
-export function euroError(raw: string, { allowZero = false }: { allowZero?: boolean } = {}): string | null {
-  if (raw.trim() === "") return "Escriu un import.";
+export function euroError(raw: string, { allowZero = false, messages }: { allowZero?: boolean; messages: EuroMessages }): string | null {
+  if (raw.trim() === "") return messages.required;
   const cents = parseEuroInput(raw);
-  if (cents === null) return "Import no vàlid. Fes servir, per exemple, 3,5 o 3,50.";
-  if (!allowZero && cents === "0") return "L’import ha de ser més gran que 0.";
+  if (cents === null) return messages.invalid;
+  if (!allowZero && cents === "0") return messages.zero;
   return null;
 }

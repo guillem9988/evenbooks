@@ -1,54 +1,62 @@
+"use client";
+
 import { StatusBadge, type Tone } from "@/components/ui-kit";
+import { useT } from "@/i18n";
 
 export function PaidBadge({ status }: { status: "PAID" | "UNPAID" }) {
-  return status === "PAID" ? <StatusBadge tone="success">Cobrada</StatusBadge> : <StatusBadge tone="warning">Pendent</StatusBadge>;
+  const t = useT();
+  return status === "PAID" ? <StatusBadge tone="success">{t("badges.paid")}</StatusBadge> : <StatusBadge tone="warning">{t("badges.unpaid")}</StatusBadge>;
 }
 
 export function RectificativaBadge({ of }: { of?: string | null }) {
+  const t = useT();
   return (
-    <StatusBadge tone="violet" title={of ? `Rectifica la factura ${of}` : undefined}>
-      Rectificativa
+    <StatusBadge tone="violet" title={of ? t("badges.rectifies", { series: of }) : undefined}>
+      {t("badges.rectificativa")}
     </StatusBadge>
   );
 }
 
 export function QuoteBadge({ status }: { status: "OPEN" | "CONVERTED" }) {
-  return status === "CONVERTED" ? <StatusBadge tone="success">Facturat</StatusBadge> : <StatusBadge tone="info">Obert</StatusBadge>;
+  const t = useT();
+  return status === "CONVERTED" ? <StatusBadge tone="success">{t("badges.quoted")}</StatusBadge> : <StatusBadge tone="info">{t("badges.open")}</StatusBadge>;
 }
 
 export type MatchKind = "auto" | "manual" | "suggestion";
 
-const MATCH: Record<MatchKind, { label: string; tone: Tone; title: string }> = {
-  auto: { label: "Auto", tone: "success", title: "Conciliada automàticament" },
-  manual: { label: "Manual", tone: "info", title: "Confirmada a mà" },
-  suggestion: { label: "Suggeriment", tone: "warning", title: "Cal revisar-la" },
-};
-
 export function MatchBadge({ kind }: { kind: MatchKind }) {
-  const entry = MATCH[kind];
+  const t = useT();
+  const entry: Record<MatchKind, { label: string; tone: Tone; title: string }> = {
+    auto: { label: t("badges.matchAuto"), tone: "success", title: t("badges.matchAutoTitle") },
+    manual: { label: t("badges.matchManual"), tone: "info", title: t("badges.matchManualTitle") },
+    suggestion: { label: t("badges.matchSuggestion"), tone: "warning", title: t("badges.matchSuggestionTitle") },
+  };
+  const current = entry[kind];
   return (
-    <StatusBadge tone={entry.tone} title={entry.title}>
-      {entry.label}
+    <StatusBadge tone={current.tone} title={current.title}>
+      {current.label}
     </StatusBadge>
   );
 }
 
-const EXPENSE: Record<string, { label: string; tone: Tone }> = {
-  PARSED: { label: "Analitzada", tone: "success" },
-  PROCESSING: { label: "Processant", tone: "warning" },
-  UPLOADED: { label: "A la cua", tone: "neutral" },
-  FAILED: { label: "No llegible", tone: "danger" },
-};
-
 export function ExpenseStatusBadge({ status }: { status: string }) {
-  const entry = EXPENSE[status] ?? { label: status, tone: "neutral" as const };
+  const t = useT();
+  const map: Record<string, { label: string; tone: Tone }> = {
+    PARSED: { label: t("badges.expenseParsed"), tone: "success" },
+    PROCESSING: { label: t("badges.expenseProcessing"), tone: "warning" },
+    UPLOADED: { label: t("badges.expenseUploaded"), tone: "neutral" },
+    FAILED: { label: t("badges.expenseFailed"), tone: "danger" },
+  };
+  const entry = map[status] ?? { label: status, tone: "neutral" as const };
   return <StatusBadge tone={entry.tone}>{entry.label}</StatusBadge>;
 }
 
 export function ActiveBadge({ active }: { active: boolean }) {
-  return active ? <StatusBadge tone="success">Activa</StatusBadge> : <StatusBadge tone="neutral">En pausa</StatusBadge>;
+  const t = useT();
+  return active ? <StatusBadge tone="success">{t("badges.active")}</StatusBadge> : <StatusBadge tone="neutral">{t("badges.paused")}</StatusBadge>;
 }
 
 export function RoleBadge({ role }: { role: string }) {
-  return role === "CLIENT" ? <StatusBadge tone="info">Client</StatusBadge> : <StatusBadge tone="neutral">Proveïdor</StatusBadge>;
+  const t = useT();
+  return role === "CLIENT" ? <StatusBadge tone="info">{t("badges.client")}</StatusBadge> : <StatusBadge tone="neutral">{t("badges.supplier")}</StatusBadge>;
 }

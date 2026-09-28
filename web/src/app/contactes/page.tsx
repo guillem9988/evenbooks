@@ -21,6 +21,7 @@ import {
   notifySuccess,
   useLoad,
 } from "@/components/ui-kit";
+import { useT } from "@/i18n";
 import { api } from "@/lib/api";
 
 type Role = "CLIENT" | "SUPPLIER";
@@ -38,6 +39,7 @@ type Errors = Partial<Record<"legalName" | "taxId" | "email", string>>;
 const TAX_ID = /^[A-Z0-9][A-Z0-9-]{3,}$/;
 
 export default function ContactsPage() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const [filter, setFilter] = useState<Role | "ALL">("ALL");
   const [query, setQuery] = useState("");
@@ -54,7 +56,7 @@ export default function ContactsPage() {
     return body.contacts;
   }, [organizationId]);
 
-  const { data, error, initialLoading, reload } = useLoad(load, "No s’han pogut carregar els contactes");
+  const { data, error, initialLoading, reload } = useLoad(load, t("contacts.loadFailed"));
   const contacts = data ?? [];
 
   useEffect(() => {
@@ -83,9 +85,9 @@ export default function ContactsPage() {
 
   async function createContact() {
     const next: Errors = {};
-    if (legalName.trim() === "") next.legalName = "Escriu la raó social.";
-    if (!TAX_ID.test(taxId.trim().toUpperCase())) next.taxId = "Escriu un NIF o CIF vàlid, per exemple B12345678.";
-    if (!EMAIL.test(email.trim())) next.email = "Escriu un correu vàlid.";
+    if (legalName.trim() === "") next.legalName = t("validation.legalName");
+    if (!TAX_ID.test(taxId.trim().toUpperCase())) next.taxId = t("validation.taxIdFormat");
+    if (!EMAIL.test(email.trim())) next.email = t("validation.email");
     setErrors(next);
     if (Object.keys(next).length > 0) return;
     setBusy(true);
@@ -94,11 +96,11 @@ export default function ContactsPage() {
         method: "POST",
         body: JSON.stringify({ legalName: legalName.trim(), taxId: taxId.trim().toUpperCase(), email: email.trim(), role }),
       });
-      notifySuccess(`${legalName.trim()} afegit com a ${role === "CLIENT" ? "client" : "proveïdor"}.`);
+      notifySuccess(role === "CLIENT" ? t("contacts.addedClient", { name: legalName.trim() }) : t("contacts.addedSupplier", { name: legalName.trim() }));
       setCreating(false);
       await reload();
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut crear el contacte");
+      notifyError(cause, t("contacts.createFailed"));
     } finally {
       setBusy(false);
     }
@@ -107,11 +109,11 @@ export default function ContactsPage() {
   return (
     <>
       <PageHeader
-        title="Contactes"
-        description="Clients i proveïdors amb el seu NIF. Els clients apareixen a Ingressos, Pressupostos i Recurrents."
+        title={t("contacts.title")}
+        description={t("contacts.description")}
         actions={
           <Button onClick={openCreate} disabled={initialLoading}>
-            <PlusIcon /> Nou contacte
+            <PlusIcon /> {t("contacts.newContact")}
           </Button>
         }
       />
@@ -123,44 +125,44 @@ export default function ContactsPage() {
         contacts.length === 0 ? (
           <EmptyState
             icon={UsersIcon}
-            title="Encara no hi ha contactes"
-            hint="Afegeix el primer client per començar a facturar."
+            title={t("contacts.empty")}
+            hint={t("contacts.emptyHint")}
             action={
               <Button onClick={openCreate}>
-                <PlusIcon /> Nou contacte
+                <PlusIcon /> {t("contacts.newContact")}
               </Button>
             }
           />
         ) : (
-          <section aria-label="Llista de contactes" className="flex flex-col gap-3">
+          <section aria-label={t("contacts.listLabel")} className="flex flex-col gap-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <Segmented
-                label="Filtra per rol"
+                label={t("contacts.filter")}
                 value={filter}
                 onChange={setFilter}
                 options={[
-                  ["ALL", "Tots", contacts.length],
-                  ["CLIENT", "Clients", clients],
-                  ["SUPPLIER", "Proveïdors", contacts.length - clients],
+                  ["ALL", t("contacts.all"), contacts.length],
+                  ["CLIENT", t("contacts.clients"), clients],
+                  ["SUPPLIER", t("contacts.suppliers"), contacts.length - clients],
                 ]}
               />
               <div className="relative sm:w-72">
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-                <Input aria-label="Cerca contactes" placeholder="Nom, NIF o correu" className="pl-8" value={query} onChange={(event) => setQuery(event.target.value)} />
+                <Input aria-label={t("contacts.search")} placeholder={t("contacts.searchPlaceholder")} className="pl-8" value={query} onChange={(event) => setQuery(event.target.value)} />
               </div>
             </div>
             {visible.length === 0 ? (
-              <EmptyState title="Cap contacte coincideix" hint="Canvia el filtre o la cerca." />
+              <EmptyState title={t("contacts.emptySearch")} hint={t("contacts.emptySearchHint")} />
             ) : (
               <>
                 <div className="hidden overflow-hidden rounded-xl border md:block">
                   <Table>
                     <TableHeader className="bg-muted/40">
                       <TableRow>
-                        <TableHead>Raó social</TableHead>
-                        <TableHead>NIF / CIF</TableHead>
-                        <TableHead>Correu</TableHead>
-                        <TableHead>Rol</TableHead>
+                        <TableHead>{t("common.legalName")}</TableHead>
+                        <TableHead>{t("common.taxId")}</TableHead>
+                        <TableHead>{t("common.email")}</TableHead>
+                        <TableHead>{t("common.role")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -202,26 +204,26 @@ export default function ContactsPage() {
       <FormDialog
         open={creating}
         onOpenChange={setCreating}
-        title="Nou contacte"
-        description="Els clients es poden facturar; els proveïdors t’ajuden a identificar despeses."
-        submitLabel="Afegeix el contacte"
+        title={t("contacts.dialogTitle")}
+        description={t("contacts.dialogDescription")}
+        submitLabel={t("contacts.dialogSubmit")}
         busy={busy}
         onSubmit={createContact}
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field id="contact-name" label="Raó social" error={errors.legalName} className="sm:col-span-2">
+          <Field id="contact-name" label={t("common.legalName")} error={errors.legalName} className="sm:col-span-2">
             <Input id="contact-name" autoComplete="organization" value={legalName} onChange={(event) => setLegalName(event.target.value)} autoFocus />
           </Field>
-          <Field id="contact-tax" label="NIF / CIF" error={errors.taxId}>
+          <Field id="contact-tax" label={t("common.taxId")} error={errors.taxId}>
             <Input id="contact-tax" value={taxId} onChange={(event) => setTaxId(event.target.value.toUpperCase())} placeholder="B12345678" />
           </Field>
-          <Field id="contact-role" label="Rol">
+          <Field id="contact-role" label={t("common.role")}>
             <NativeSelect id="contact-role" value={role} onChange={(event) => setRole(event.target.value as Role)}>
-              <option value="CLIENT">Client</option>
-              <option value="SUPPLIER">Proveïdor</option>
+              <option value="CLIENT">{t("contacts.client")}</option>
+              <option value="SUPPLIER">{t("contacts.supplier")}</option>
             </NativeSelect>
           </Field>
-          <Field id="contact-email" label="Correu" error={errors.email} className="sm:col-span-2">
+          <Field id="contact-email" label={t("common.email")} error={errors.email} className="sm:col-span-2">
             <Input id="contact-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
           </Field>
         </div>

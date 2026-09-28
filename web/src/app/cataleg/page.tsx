@@ -20,6 +20,7 @@ import {
   notifySuccess,
   useLoad,
 } from "@/components/ui-kit";
+import { useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { euroError, euroInput, euros, parseEuroInput } from "@/lib/money";
 
@@ -38,6 +39,7 @@ interface Draft {
 }
 
 export default function CatalogPage() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<{ name?: string; price?: string }>({});
@@ -50,7 +52,7 @@ export default function CatalogPage() {
     return body.items;
   }, [organizationId]);
 
-  const { data, error, initialLoading, reload } = useLoad(load, "No s’ha pogut carregar el catàleg");
+  const { data, error, initialLoading, reload } = useLoad(load, t("catalog.loadFailed"));
   const items = data ?? [];
   const visible = query.trim() === "" ? items : items.filter((item) => item.name.toLowerCase().includes(query.trim().toLowerCase()));
 
@@ -67,8 +69,11 @@ export default function CatalogPage() {
   async function save() {
     if (draft === null) return;
     const next: typeof errors = {};
-    if (draft.name.trim() === "") next.name = "Escriu el nom.";
-    const priceError = euroError(draft.price, { allowZero: true });
+    if (draft.name.trim() === "") next.name = t("validation.writeName");
+    const priceError = euroError(draft.price, {
+      allowZero: true,
+      messages: { required: t("money.required"), invalid: t("money.invalid"), zero: t("money.zero") },
+    });
     if (priceError) next.price = priceError;
     setErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -77,15 +82,15 @@ export default function CatalogPage() {
       const body = JSON.stringify({ name: draft.name.trim(), unitAmountCents: parseEuroInput(draft.price), taxRate: Number(draft.taxRate) });
       if (draft.id === null) {
         await api(`/organizations/${organizationId}/catalog`, { method: "POST", body });
-        notifySuccess(`${draft.name.trim()} afegit al catàleg.`);
+        notifySuccess(t("catalog.added", { name: draft.name.trim() }));
       } else {
         await api(`/organizations/${organizationId}/catalog/${draft.id}`, { method: "PATCH", body });
-        notifySuccess(`${draft.name.trim()} actualitzat.`);
+        notifySuccess(t("catalog.updated", { name: draft.name.trim() }));
       }
       setDraft(null);
       await reload();
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut desar el producte");
+      notifyError(cause, t("catalog.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -96,11 +101,11 @@ export default function CatalogPage() {
     setBusy(true);
     try {
       await api(`/organizations/${organizationId}/catalog/${removing.id}`, { method: "DELETE" });
-      notifySuccess(`${removing.name} eliminat del catàleg.`);
+      notifySuccess(t("catalog.removed", { name: removing.name }));
       setRemoving(null);
       await reload();
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut eliminar el producte");
+      notifyError(cause, t("catalog.removeFailed"));
     } finally {
       setBusy(false);
     }
@@ -108,10 +113,17 @@ export default function CatalogPage() {
 
   const rowActions = (item: CatalogItem) => (
     <div className="flex justify-end gap-1">
-      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Edita ${item.name}`} onClick={() => openEdit(item)}>
+      <Button type="button" size="icon-sm" variant="ghost" aria-label={t("catalog.edit", { name: item.name })} onClick={() => openEdit(item)}>
         <PencilIcon />
       </Button>
-      <Button type="button" size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Elimina ${item.name}`} onClick={() => setRemoving(item)}>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        className="text-destructive"
+        aria-label={t("catalog.remove", { name: item.name })}
+        onClick={() => setRemoving(item)}
+      >
         <Trash2Icon />
       </Button>
     </div>
@@ -120,11 +132,11 @@ export default function CatalogPage() {
   return (
     <>
       <PageHeader
-        title="Catàleg"
-        description="Productes i serveis amb el preu i l’IVA, per omplir factures i sèries més de pressa."
+        title={t("catalog.title")}
+        description={t("catalog.description")}
         actions={
           <Button onClick={openCreate} disabled={initialLoading}>
-            <PlusIcon /> Nou producte
+            <PlusIcon /> {t("catalog.newProduct")}
           </Button>
         }
       />
@@ -136,34 +148,40 @@ export default function CatalogPage() {
         items.length === 0 ? (
           <EmptyState
             icon={PackageIcon}
-            title="Encara no hi ha productes ni serveis"
-            hint="Afegeix el que factures sovint, com una hora de consultoria o una quota mensual."
+            title={t("catalog.empty")}
+            hint={t("catalog.emptyHint")}
             action={
               <Button onClick={openCreate}>
-                <PlusIcon /> Nou producte
+                <PlusIcon /> {t("catalog.newProduct")}
               </Button>
             }
           />
         ) : (
-          <section aria-label="Productes i serveis" className="flex flex-col gap-3">
+          <section aria-label={t("catalog.listLabel")} className="flex flex-col gap-3">
             <div className="relative max-w-sm">
               <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-              <Input aria-label="Cerca al catàleg" placeholder="Cerca per nom" className="pl-8" value={query} onChange={(event) => setQuery(event.target.value)} />
+              <Input
+                aria-label={t("catalog.search")}
+                placeholder={t("catalog.searchPlaceholder")}
+                className="pl-8"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
             </div>
             {visible.length === 0 ? (
-              <EmptyState title="Cap producte coincideix amb la cerca" />
+              <EmptyState title={t("catalog.emptySearch")} />
             ) : (
               <>
                 <div className="hidden overflow-hidden rounded-xl border md:block">
                   <Table>
                     <TableHeader className="bg-muted/40">
                       <TableRow>
-                        <TableHead>Nom</TableHead>
-                        <TableHead className="text-right">Preu</TableHead>
-                        <TableHead className="text-right">IVA</TableHead>
-                        <TableHead className="text-right">Preu amb IVA</TableHead>
+                        <TableHead>{t("common.name")}</TableHead>
+                        <TableHead className="text-right">{t("common.price")}</TableHead>
+                        <TableHead className="text-right">{t("common.vat")}</TableHead>
+                        <TableHead className="text-right">{t("catalog.priceWithVat")}</TableHead>
                         <TableHead className="text-right">
-                          <span className="sr-only">Accions</span>
+                          <span className="sr-only">{t("common.actions")}</span>
                         </TableHead>
                       </TableRow>
                     </TableHeader>
@@ -186,7 +204,7 @@ export default function CatalogPage() {
                       <div className="min-w-0">
                         <p className="truncate font-medium">{item.name}</p>
                         <p className="text-sm text-muted-foreground tabular-nums">
-                          {euros(item.unitAmountCents)} · IVA {item.taxRate}%
+                          {euros(item.unitAmountCents)} · {t("common.vat")} {item.taxRate}%
                         </p>
                       </div>
                       {rowActions(item)}
@@ -202,21 +220,21 @@ export default function CatalogPage() {
       <FormDialog
         open={draft !== null}
         onOpenChange={(open) => !open && setDraft(null)}
-        title={draft?.id ? "Edita el producte" : "Nou producte o servei"}
-        description="Escriu el preu sense IVA, per exemple 3,5 o 3,50."
-        submitLabel={draft?.id ? "Desa els canvis" : "Afegeix al catàleg"}
+        title={draft?.id ? t("catalog.editTitle") : t("catalog.createTitle")}
+        description={t("catalog.formHint")}
+        submitLabel={draft?.id ? t("catalog.saveChanges") : t("catalog.addToCatalog")}
         busy={busy}
         onSubmit={save}
       >
         {draft ? (
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_6rem]">
-            <Field id="catalog-name" label="Nom" error={errors.name}>
+            <Field id="catalog-name" label={t("common.name")} error={errors.name}>
               <Input id="catalog-name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} autoFocus />
             </Field>
-            <Field id="catalog-price" label="Preu" error={errors.price}>
+            <Field id="catalog-price" label={t("common.price")} error={errors.price}>
               <EuroInput id="catalog-price" value={draft.price} onChange={(price) => setDraft({ ...draft, price })} />
             </Field>
-            <Field id="catalog-rate" label="IVA">
+            <Field id="catalog-rate" label={t("common.vat")}>
               <NativeSelect id="catalog-rate" value={draft.taxRate} onChange={(event) => setDraft({ ...draft, taxRate: event.target.value })}>
                 {TAX_RATES.map((rate) => (
                   <option key={rate} value={rate}>
@@ -232,9 +250,9 @@ export default function CatalogPage() {
       <FormDialog
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}
-        title={`Vols eliminar ${removing?.name ?? ""}?`}
-        description="Desapareixerà del catàleg. Les factures que ja el fan servir no canvien."
-        submitLabel="Elimina"
+        title={t("catalog.removeTitle", { name: removing?.name ?? "" })}
+        description={t("catalog.removeDescription")}
+        submitLabel={t("catalog.removeSubmit")}
         busy={busy}
         destructive
         onSubmit={remove}

@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/i18n";
+import { dictFor, getLocale, monthsFor, translate } from "@/i18n/core";
 import { cn } from "@/lib/utils";
 
 export function PageHeader({
@@ -57,6 +59,7 @@ export function Section({
 }
 
 export function ErrorBanner({ message, onRetry }: { message: string | null; onRetry?: () => void }) {
+  const t = useT();
   if (message === null) return null;
   return (
     <div
@@ -69,7 +72,7 @@ export function ErrorBanner({ message, onRetry }: { message: string | null; onRe
       </span>
       {onRetry ? (
         <Button type="button" variant="outline" size="sm" className="self-start sm:self-auto" onClick={onRetry}>
-          <RotateCwIcon /> Torna-ho a provar
+          <RotateCwIcon /> {t("common.retry")}
         </Button>
       ) : null}
     </div>
@@ -100,8 +103,9 @@ export function EmptyState({
 }
 
 export function LoadingRows({ rows = 3 }: { rows?: number }) {
+  const t = useT();
   return (
-    <div className="flex flex-col gap-2" aria-busy="true" aria-label="Carregant">
+    <div className="flex flex-col gap-2" aria-busy="true" aria-label={t("common.loading")}>
       {Array.from({ length: rows }, (_, index) => (
         <Skeleton key={index} className="h-14 w-full" />
       ))}
@@ -110,8 +114,9 @@ export function LoadingRows({ rows = 3 }: { rows?: number }) {
 }
 
 export function TableSkeleton({ rows = 4, columns = 5 }: { rows?: number; columns?: number }) {
+  const t = useT();
   return (
-    <div className="overflow-hidden rounded-xl border" aria-busy="true" aria-label="Carregant">
+    <div className="overflow-hidden rounded-xl border" aria-busy="true" aria-label={t("common.loading")}>
       <div className="flex gap-4 border-b bg-muted/40 px-4 py-3">
         {Array.from({ length: columns }, (_, index) => (
           <Skeleton key={index} className="h-3 flex-1" />
@@ -129,8 +134,9 @@ export function TableSkeleton({ rows = 4, columns = 5 }: { rows?: number; column
 }
 
 export function CardsSkeleton({ count = 4, className }: { count?: number; className?: string }) {
+  const t = useT();
   return (
-    <div className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", className)} aria-busy="true" aria-label="Carregant">
+    <div className={cn("grid gap-3 sm:grid-cols-2 lg:grid-cols-4", className)} aria-busy="true" aria-label={t("common.loading")}>
       {Array.from({ length: count }, (_, index) => (
         <Card key={index} size="sm">
           <CardHeader>
@@ -354,6 +360,7 @@ export function FormDialog({
   wide?: boolean;
   destructive?: boolean;
 }) {
+  const t = useT();
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className={cn("max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg", wide && "sm:max-w-3xl")}>
@@ -371,9 +378,9 @@ export function FormDialog({
           </DialogHeader>
           {children}
           <DialogFooter>
-            <DialogClose render={<Button type="button" variant="outline" disabled={busy} />}>Cancel·la</DialogClose>
+            <DialogClose render={<Button type="button" variant="outline" disabled={busy} />}>{t("common.cancel")}</DialogClose>
             <Button type="submit" variant={destructive ? "destructive" : "default"} disabled={busy}>
-              {busy ? "Un moment…" : submitLabel}
+              {busy ? t("common.wait") : submitLabel}
             </Button>
           </DialogFooter>
         </form>
@@ -447,22 +454,24 @@ export function useQuarter(): [Quarter, (next: Quarter) => void] {
 }
 
 export function QuarterPicker({ value, onChange }: { value: Quarter; onChange: (next: Quarter) => void }) {
+  const t = useT();
+  const quarters = dictFor(getLocale()).period.quarterN;
   const thisYear = new Date().getUTCFullYear();
   const years = [thisYear - 2, thisYear - 1, thisYear, thisYear + 1];
   return (
     <div className="flex gap-2">
       <NativeSelect
-        aria-label="Trimestre"
+        aria-label={t("period.ariaQuarter")}
         className="w-auto"
         value={value.quarter}
         onChange={(event) => onChange({ ...value, quarter: Number(event.target.value) as Quarter["quarter"] })}
       >
-        <option value={1}>1r trimestre</option>
-        <option value={2}>2n trimestre</option>
-        <option value={3}>3r trimestre</option>
-        <option value={4}>4t trimestre</option>
+        <option value={1}>{quarters[0]}</option>
+        <option value={2}>{quarters[1]}</option>
+        <option value={3}>{quarters[2]}</option>
+        <option value={4}>{quarters[3]}</option>
       </NativeSelect>
-      <NativeSelect aria-label="Any" className="w-auto" value={value.year} onChange={(event) => onChange({ ...value, year: Number(event.target.value) })}>
+      <NativeSelect aria-label={t("period.ariaYear")} className="w-auto" value={value.year} onChange={(event) => onChange({ ...value, year: Number(event.target.value) })}>
         {years.map((year) => (
           <option key={year} value={year}>
             {year}
@@ -473,7 +482,8 @@ export function QuarterPicker({ value, onChange }: { value: Quarter; onChange: (
   );
 }
 
-export const MONTHS = ["gener", "febrer", "març", "abril", "maig", "juny", "juliol", "agost", "setembre", "octubre", "novembre", "desembre"] as const;
+/** @deprecated Prefer monthsFor() from i18n — kept for callers that need a static list. */
+export const MONTHS = monthsFor("ca");
 
 export type Period =
   | { kind: "month"; year: number; month: number }
@@ -495,32 +505,41 @@ export function periodRange(period: Period): { from: string; to: string } {
 }
 
 export function periodLabel(period: Period): string {
-  if (period.kind === "month") return `${MONTHS[period.month - 1]} de ${period.year}`;
-  if (period.kind === "year") return `any ${period.year}`;
-  return `${["1r", "2n", "3r", "4t"][period.quarter - 1]} trimestre de ${period.year}`;
+  const locale = getLocale();
+  const dict = dictFor(locale);
+  if (period.kind === "month") {
+    return translate(locale, "period.monthOf", { month: dict.period.months[period.month - 1] ?? "", year: period.year });
+  }
+  if (period.kind === "year") {
+    return translate(locale, "period.yearOf", { year: period.year });
+  }
+  return translate(locale, "period.quarterOf", { quarter: dict.period.quarterShort[period.quarter - 1] ?? "", year: period.year });
 }
 
 export function PeriodPicker({ value, onChange }: { value: Period; onChange: (next: Period) => void }) {
+  const t = useT();
+  const months = monthsFor(getLocale());
+  const quarters = dictFor(getLocale()).period.quarterN;
   const thisYear = new Date().getUTCFullYear();
   const years = [thisYear - 2, thisYear - 1, thisYear, thisYear + 1];
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Segmented
-        label="Tipus de període"
+        label={t("period.type")}
         value={value.kind}
         onChange={(kind) => {
           const next = currentPeriod(kind);
           onChange({ ...next, year: value.year } as Period);
         }}
         options={[
-          ["month", "Mes"],
-          ["quarter", "Trimestre"],
-          ["year", "Any"],
+          ["month", t("period.month")],
+          ["quarter", t("period.quarter")],
+          ["year", t("period.year")],
         ]}
       />
       {value.kind === "month" ? (
-        <NativeSelect aria-label="Mes" className="w-auto" value={value.month} onChange={(event) => onChange({ ...value, month: Number(event.target.value) })}>
-          {MONTHS.map((name, index) => (
+        <NativeSelect aria-label={t("period.ariaMonth")} className="w-auto" value={value.month} onChange={(event) => onChange({ ...value, month: Number(event.target.value) })}>
+          {months.map((name, index) => (
             <option key={name} value={index + 1}>
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </option>
@@ -529,18 +548,18 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (ne
       ) : null}
       {value.kind === "quarter" ? (
         <NativeSelect
-          aria-label="Trimestre"
+          aria-label={t("period.ariaQuarter")}
           className="w-auto"
           value={value.quarter}
           onChange={(event) => onChange({ ...value, quarter: Number(event.target.value) as Quarter["quarter"] })}
         >
-          <option value={1}>1r trimestre</option>
-          <option value={2}>2n trimestre</option>
-          <option value={3}>3r trimestre</option>
-          <option value={4}>4t trimestre</option>
+          <option value={1}>{quarters[0]}</option>
+          <option value={2}>{quarters[1]}</option>
+          <option value={3}>{quarters[2]}</option>
+          <option value={4}>{quarters[3]}</option>
         </NativeSelect>
       ) : null}
-      <NativeSelect aria-label="Any" className="w-auto" value={value.year} onChange={(event) => onChange({ ...value, year: Number(event.target.value) } as Period)}>
+      <NativeSelect aria-label={t("period.ariaYear")} className="w-auto" value={value.year} onChange={(event) => onChange({ ...value, year: Number(event.target.value) } as Period)}>
         {years.map((year) => (
           <option key={year} value={year}>
             {year}

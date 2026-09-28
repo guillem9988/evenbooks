@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { FormDialog, Field, NativeSelect, notifyError, today } from "@/components/ui-kit";
 import { LineEditor, emptyLine, validateLines, type CatalogPick, type DraftLine, type LineErrors, type ParsedLine } from "@/components/line-editor";
+import { useT } from "@/i18n";
 
 export type { CatalogPick } from "@/components/line-editor";
 
@@ -47,6 +48,7 @@ export function DocumentDialog({
   suggestedSeries?: string;
   onSubmit: (payload: DocumentPayload) => Promise<void>;
 }) {
+  const t = useT();
   const [contactId, setContactId] = useState("");
   const [date, setDate] = useState(today);
   const [seriesNumber, setSeriesNumber] = useState(suggestedSeries);
@@ -66,10 +68,14 @@ export function DocumentDialog({
 
   async function submit() {
     const header: HeaderErrors = {};
-    if (contactId === "") header.contactId = "Tria un client.";
-    if (seriesNumber.trim() === "") header.seriesNumber = "Escriu el número.";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) header.date = "Tria una data.";
-    const checked = validateLines(lines);
+    if (contactId === "") header.contactId = t("validation.pickClient");
+    if (seriesNumber.trim() === "") header.seriesNumber = t("validation.writeNumber");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) header.date = t("validation.pickDate");
+    const checked = validateLines(lines, {
+      concept: t("validation.concept"),
+      qtyMin: t("validation.qtyMin"),
+      money: { required: t("money.required"), invalid: t("money.invalid"), zero: t("money.zero") },
+    });
     setErrors(header);
     setLineErrors(checked.errors);
     if (Object.keys(header).length > 0 || checked.parsed === null) return;
@@ -79,7 +85,7 @@ export function DocumentDialog({
       reset();
       onOpenChange(false);
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut desar");
+      notifyError(cause, t("document.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -100,9 +106,9 @@ export function DocumentDialog({
       wide
     >
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field id="doc-contact" label="Client" error={errors.contactId}>
+        <Field id="doc-contact" label={t("common.client")} error={errors.contactId}>
           <NativeSelect id="doc-contact" value={contactId} onChange={(event) => setContactId(event.target.value)}>
-            <option value="">Tria un client</option>
+            <option value="">{t("validation.pickClient")}</option>
             {contacts.map((contact) => (
               <option key={contact.id} value={contact.id}>
                 {contact.legalName}
@@ -110,10 +116,10 @@ export function DocumentDialog({
             ))}
           </NativeSelect>
         </Field>
-        <Field id="doc-series" label="Número" error={errors.seriesNumber}>
+        <Field id="doc-series" label={t("common.number")} error={errors.seriesNumber}>
           <Input id="doc-series" value={seriesNumber} onChange={(event) => setSeriesNumber(event.target.value)} placeholder="2026-001" />
         </Field>
-        <Field id="doc-date" label="Data" error={errors.date}>
+        <Field id="doc-date" label={t("common.date")} error={errors.date}>
           <Input id="doc-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </Field>
       </div>

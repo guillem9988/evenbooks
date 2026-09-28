@@ -24,6 +24,7 @@ import {
   sumCents,
   useLoad,
 } from "@/components/ui-kit";
+import { useT } from "@/i18n";
 import { api, apiPath } from "@/lib/api";
 import { euros } from "@/lib/money";
 
@@ -48,6 +49,7 @@ interface IncomeData {
 type Filter = "ALL" | "UNPAID" | "PAID" | "RECTIFICATIVA";
 
 export default function IncomePage() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const [creating, setCreating] = useState(false);
   const [rectifying, setRectifying] = useState<IssuedInvoice | null>(null);
@@ -63,7 +65,7 @@ export default function IncomePage() {
     return { contacts: people.contacts.filter((contact) => contact.role === "CLIENT"), invoices: issued.issuedInvoices, catalog: products.items };
   }, [organizationId]);
 
-  const { data, error, initialLoading, reload } = useLoad(load, "No s’han pogut carregar les factures");
+  const { data, error, initialLoading, reload } = useLoad(load, t("income.loadFailed"));
   const invoices = useMemo(() => data?.invoices ?? [], [data]);
   const contacts = data?.contacts ?? [];
 
@@ -88,7 +90,7 @@ export default function IncomePage() {
       method: "POST",
       body: JSON.stringify({ contactId: payload.contactId, invoiceDate: payload.date, seriesNumber: payload.seriesNumber, lines: payload.lines }),
     });
-    notifySuccess(`Factura ${payload.seriesNumber} creada.`);
+    notifySuccess(t("income.created", { series: payload.seriesNumber }));
     await reload();
   }
 
@@ -96,11 +98,11 @@ export default function IncomePage() {
     setPending(invoice.id);
     try {
       const created = await api<{ seriesNumber: string }>(`/organizations/${organizationId}/issued-invoices/${invoice.id}/rectify`, { method: "POST" });
-      notifySuccess(`Rectificativa ${created.seriesNumber} creada.`);
+      notifySuccess(t("income.rectificativaCreated", { series: created.seriesNumber }));
       setRectifying(null);
       await reload();
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut crear la rectificativa");
+      notifyError(cause, t("income.rectifyFailed"));
     } finally {
       setPending(null);
     }
@@ -113,10 +115,14 @@ export default function IncomePage() {
         method: "PATCH",
         body: JSON.stringify({ paid: invoice.status !== "PAID" }),
       });
-      notifySuccess(invoice.status === "PAID" ? `${invoice.seriesNumber} torna a estar pendent.` : `${invoice.seriesNumber} marcada com a cobrada.`);
+      notifySuccess(
+        invoice.status === "PAID"
+          ? t("income.markedUnpaid", { series: invoice.seriesNumber })
+          : t("income.markedPaid", { series: invoice.seriesNumber }),
+      );
       await reload();
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut actualitzar l’estat");
+      notifyError(cause, t("income.statusFailed"));
     } finally {
       setPending(null);
     }
@@ -136,11 +142,11 @@ export default function IncomePage() {
   return (
     <>
       <PageHeader
-        title="Ingressos"
-        description="Factures emeses als teus clients, amb la base, l’IVA i el total."
+        title={t("income.title")}
+        description={t("income.description")}
         actions={
           <Button onClick={() => setCreating(true)} disabled={initialLoading || contacts.length === 0}>
-            <PlusIcon /> Nova factura
+            <PlusIcon /> {t("income.newInvoice")}
           </Button>
         }
       />
@@ -154,58 +160,69 @@ export default function IncomePage() {
       ) : data ? (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <KpiCard label="Facturat" value={euros(sumCents(invoices.map((invoice) => invoice.totalAmountCents)))} hint={`${invoices.length} factures en total`} />
-            <KpiCard label="Pendent de cobrament" value={euros(sumCents(unpaid.map((invoice) => invoice.totalAmountCents)))} hint={`${unpaid.length} pendents`} />
-            <KpiCard label="Cobrat" value={euros(sumCents(invoices.filter((invoice) => invoice.status === "PAID").map((invoice) => invoice.totalAmountCents)))} />
+            <KpiCard
+              label={t("income.billed")}
+              value={euros(sumCents(invoices.map((invoice) => invoice.totalAmountCents)))}
+              hint={t("income.billedHint", { count: invoices.length })}
+            />
+            <KpiCard
+              label={t("income.unpaid")}
+              value={euros(sumCents(unpaid.map((invoice) => invoice.totalAmountCents)))}
+              hint={t("income.unpaidHint", { count: unpaid.length })}
+            />
+            <KpiCard
+              label={t("income.paid")}
+              value={euros(sumCents(invoices.filter((invoice) => invoice.status === "PAID").map((invoice) => invoice.totalAmountCents)))}
+            />
           </div>
 
           {contacts.length === 0 && invoices.length === 0 ? (
             <EmptyState
               icon={UsersIcon}
-              title="Primer necessites un client"
-              hint="Les factures s’emeten a un client. Afegeix-lo a Contactes i torna aquí."
-              action={<Button render={<Link href="/contactes?nou=1" />}>Afegeix un client</Button>}
+              title={t("income.needClient")}
+              hint={t("income.needClientHint")}
+              action={<Button render={<Link href="/contactes?nou=1" />}>{t("income.addClient")}</Button>}
             />
           ) : invoices.length === 0 ? (
             <EmptyState
-              title="Encara no hi ha factures emeses"
-              hint="Crea la primera factura. Podràs descarregar-ne el PDF i marcar-la com a cobrada."
+              title={t("income.empty")}
+              hint={t("income.emptyHint")}
               action={
                 <Button onClick={() => setCreating(true)}>
-                  <PlusIcon /> Nova factura
+                  <PlusIcon /> {t("income.newInvoice")}
                 </Button>
               }
             />
           ) : (
-            <section className="flex flex-col gap-3" aria-label="Factures emeses">
+            <section className="flex flex-col gap-3" aria-label={t("income.listLabel")}>
               <Segmented
-                label="Filtra les factures"
+                label={t("income.filter")}
                 value={filter}
                 onChange={setFilter}
                 options={[
-                  ["ALL", "Totes", invoices.length],
-                  ["UNPAID", "Pendents", unpaid.length],
-                  ["PAID", "Cobrades", invoices.length - unpaid.length],
-                  ["RECTIFICATIVA", "Rectificatives", invoices.filter((invoice) => invoice.rectifiesSeriesNumber !== null).length],
+                  ["ALL", t("income.all"), invoices.length],
+                  ["UNPAID", t("income.pending"), unpaid.length],
+                  ["PAID", t("income.collected"), invoices.length - unpaid.length],
+                  ["RECTIFICATIVA", t("income.rectificatives"), invoices.filter((invoice) => invoice.rectifiesSeriesNumber !== null).length],
                 ]}
               />
               {visible.length === 0 ? (
-                <EmptyState title="Cap factura amb aquest filtre" />
+                <EmptyState title={t("income.emptyFilter")} />
               ) : (
                 <>
                   <div className="hidden overflow-hidden rounded-xl border md:block">
                     <Table>
                       <TableHeader className="bg-muted/40">
                         <TableRow>
-                          <TableHead>Número</TableHead>
-                          <TableHead>Client</TableHead>
-                          <TableHead>Data</TableHead>
-                          <TableHead className="text-right">Base</TableHead>
-                          <TableHead className="text-right">IVA</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead>Estat</TableHead>
+                          <TableHead>{t("common.number")}</TableHead>
+                          <TableHead>{t("common.client")}</TableHead>
+                          <TableHead>{t("common.date")}</TableHead>
+                          <TableHead className="text-right">{t("common.base")}</TableHead>
+                          <TableHead className="text-right">{t("common.vat")}</TableHead>
+                          <TableHead className="text-right">{t("common.total")}</TableHead>
+                          <TableHead>{t("common.status")}</TableHead>
                           <TableHead className="text-right">
-                            <span className="sr-only">Accions</span>
+                            <span className="sr-only">{t("common.actions")}</span>
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -217,7 +234,8 @@ export default function IncomePage() {
                                 {invoice.seriesNumber}
                                 {invoice.rectifiesSeriesNumber ? (
                                   <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
-                                    <RectificativaBadge of={invoice.rectifiesSeriesNumber} /> de {invoice.rectifiesSeriesNumber}
+                                    <RectificativaBadge of={invoice.rectifiesSeriesNumber} />{" "}
+                                    {t("income.ofSeries", { series: invoice.rectifiesSeriesNumber })}
                                   </span>
                                 ) : null}
                               </div>
@@ -268,9 +286,9 @@ export default function IncomePage() {
       <DocumentDialog
         open={creating}
         onOpenChange={setCreating}
-        title="Nova factura"
-        description="Afegeix les línies i revisa la base, l’IVA i el total abans de desar."
-        submitLabel="Crea la factura"
+        title={t("income.dialogTitle")}
+        description={t("income.dialogDescription")}
+        submitLabel={t("income.dialogSubmit")}
         contacts={contacts}
         catalog={data?.catalog ?? []}
         suggestedSeries={nextSeries(invoices.filter((invoice) => invoice.rectifiesSeriesNumber === null).map((invoice) => invoice.seriesNumber))}
@@ -280,9 +298,9 @@ export default function IncomePage() {
       <FormDialog
         open={rectifying !== null}
         onOpenChange={(open) => !open && setRectifying(null)}
-        title={`Rectifica la factura ${rectifying?.seriesNumber ?? ""}`}
-        description="Es crearà una factura rectificativa amb els mateixos imports en negatiu. La factura original no es modifica."
-        submitLabel="Crea la rectificativa"
+        title={t("income.rectifyTitle", { series: rectifying?.seriesNumber ?? "" })}
+        description={t("income.rectifyDescription")}
+        submitLabel={t("income.rectifySubmit")}
         busy={rectifying !== null && pending === rectifying.id}
         destructive
         onSubmit={() => (rectifying ? rectify(rectifying) : undefined)}
@@ -290,11 +308,11 @@ export default function IncomePage() {
         {rectifying ? (
           <dl className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
             <div>
-              <dt className="text-muted-foreground">Client</dt>
+              <dt className="text-muted-foreground">{t("common.client")}</dt>
               <dd className="font-medium">{rectifying.contactName}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">Total a rectificar</dt>
+              <dt className="text-muted-foreground">{t("income.totalToRectify")}</dt>
               <dd className="font-medium tabular-nums">{euros(rectifying.totalAmountCents)}</dd>
             </div>
           </dl>
@@ -319,30 +337,33 @@ function InvoiceActions({
   onPaid: () => void;
   onRectify: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-end gap-1.5">
       <Button type="button" variant="outline" size="sm" disabled={pending} onClick={onPaid}>
         {invoice.status === "PAID" ? (
           <>
-            <UndoIcon /> Pendent
+            <UndoIcon /> {t("income.pendingBtn")}
           </>
         ) : (
           <>
-            <CheckIcon /> Cobrada
+            <CheckIcon /> {t("income.paidBtn")}
           </>
         )}
       </Button>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon-sm" aria-label={`Més accions per a ${invoice.seriesNumber}`} />}>
+        <DropdownMenuTrigger
+          render={<Button type="button" variant="ghost" size="icon-sm" aria-label={t("income.moreActions", { series: invoice.seriesNumber })} />}
+        >
           <MoreHorizontalIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem render={<a href={apiPath(`/organizations/${organizationId}/issued-invoices/${invoice.id}.pdf`)} />}>
-            <FileDownIcon /> Descarrega el PDF
+            <FileDownIcon /> {t("income.downloadPdf")}
           </DropdownMenuItem>
           {canRectify ? (
             <DropdownMenuItem onClick={onRectify}>
-              <FilePenLineIcon /> Crea una rectificativa
+              <FilePenLineIcon /> {t("income.createRectificativa")}
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuContent>

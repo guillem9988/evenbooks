@@ -22,15 +22,16 @@ import {
   useLoad,
 } from "@/components/ui-kit";
 import { UploadDialog } from "@/components/upload-dialog";
+import { useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { euros } from "@/lib/money";
 
 const CATEGORIES = [
-  ["OFFICE", "Oficina"],
-  ["TRAVEL", "Viatges"],
-  ["SOFTWARE", "Programari"],
-  ["MEALS", "Àpats"],
-  ["OTHER", "Altres"],
+  ["OFFICE", "expenses.catOffice"],
+  ["TRAVEL", "expenses.catTravel"],
+  ["SOFTWARE", "expenses.catSoftware"],
+  ["MEALS", "expenses.catMeals"],
+  ["OTHER", "expenses.catOther"],
 ] as const;
 
 interface Expense {
@@ -47,6 +48,7 @@ interface Expense {
 type Filter = "ALL" | "UNCATEGORIZED" | "PENDING" | "FAILED";
 
 export default function ExpensesPage() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -57,7 +59,7 @@ export default function ExpensesPage() {
     return body.expenses;
   }, [organizationId]);
 
-  const { data, setData, error, initialLoading, loading, reload } = useLoad(load, "No s’han pogut carregar les despeses");
+  const { data, setData, error, initialLoading, loading, reload } = useLoad(load, t("expenses.loadFailed"));
   const rows = data ?? [];
   const inFlight = rows.some((row) => row.status === "UPLOADED" || row.status === "PROCESSING");
 
@@ -78,7 +80,7 @@ export default function ExpensesPage() {
     const form = new FormData();
     for (const file of files) form.append("files", file);
     const body = await api<{ invoiceIds: string[] }>(`/organizations/${organizationId}/invoices`, { method: "POST", body: form });
-    notifySuccess(`${body.invoiceIds.length} ${body.invoiceIds.length === 1 ? "factura pujada" : "factures pujades"}. S’estan analitzant.`);
+    notifySuccess(body.invoiceIds.length === 1 ? t("expenses.uploadedOne") : t("expenses.uploadedMany", { count: body.invoiceIds.length }));
     await reload();
   }
 
@@ -87,9 +89,9 @@ export default function ExpensesPage() {
     try {
       await api(`/organizations/${organizationId}/invoices/${row.id}`, { method: "PATCH", body: JSON.stringify({ expenseCategory }) });
       setData((current) => current?.map((item) => (item.id === row.id ? { ...item, expenseCategory } : item)) ?? current);
-      notifySuccess(`Categoria desada per a ${row.vendorName ?? "la despesa"}.`);
+      notifySuccess(t("expenses.categorySaved", { name: row.vendorName ?? t("expenses.theExpense") }));
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut desar la categoria");
+      notifyError(cause, t("expenses.categoryFailed"));
     } finally {
       setSaving(null);
     }
@@ -98,15 +100,15 @@ export default function ExpensesPage() {
   return (
     <>
       <PageHeader
-        title="Despeses"
-        description="Factures i tiquets rebuts. En pujar-los se n’extreuen el proveïdor, la data i els imports."
+        title={t("expenses.title")}
+        description={t("expenses.description")}
         actions={
           <>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
-              <RefreshCwIcon /> Actualitza
+              <RefreshCwIcon /> {t("expenses.refresh")}
             </Button>
             <Button onClick={() => setUploading(true)}>
-              <UploadIcon /> Puja factures
+              <UploadIcon /> {t("expenses.upload")}
             </Button>
           </>
         }
@@ -121,61 +123,65 @@ export default function ExpensesPage() {
       ) : data ? (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <KpiCard label="Total analitzat" value={euros(sumCents(parsed.map((row) => row.totalAmountCents)))} hint={`${parsed.length} factures llegides`} />
-            <KpiCard label="IVA suportat" value={euros(sumCents(parsed.map((row) => row.taxAmountCents)))} hint="Deduïble al model 303" />
-            <KpiCard label="Per revisar" value={String(uncategorized.length + failed.length)} hint={`${uncategorized.length} sense categoria · ${failed.length} no llegibles`} />
+            <KpiCard label={t("expenses.totalParsed")} value={euros(sumCents(parsed.map((row) => row.totalAmountCents)))} hint={t("expenses.totalParsedHint", { count: parsed.length })} />
+            <KpiCard label={t("expenses.vatSupported")} value={euros(sumCents(parsed.map((row) => row.taxAmountCents)))} hint={t("expenses.vatSupportedHint")} />
+            <KpiCard
+              label={t("expenses.toReview")}
+              value={String(uncategorized.length + failed.length)}
+              hint={t("expenses.toReviewHint", { uncat: uncategorized.length, failed: failed.length })}
+            />
           </div>
 
           {rows.length === 0 ? (
             <EmptyState
               icon={ReceiptIcon}
-              title="Encara no hi ha factures rebudes"
-              hint="Puja PDF o fotos de tiquets. Els PDF amb text es llegeixen al moment; les fotos passen per OCR."
+              title={t("expenses.empty")}
+              hint={t("expenses.emptyHint")}
               action={
                 <Button onClick={() => setUploading(true)}>
-                  <UploadIcon /> Puja factures
+                  <UploadIcon /> {t("expenses.upload")}
                 </Button>
               }
             />
           ) : (
-            <section aria-label="Factures rebudes" className="flex flex-col gap-3">
+            <section aria-label={t("expenses.listLabel")} className="flex flex-col gap-3">
               <Segmented
-                label="Filtra les despeses"
+                label={t("expenses.filter")}
                 value={filter}
                 onChange={setFilter}
                 options={[
-                  ["ALL", "Totes", rows.length],
-                  ["UNCATEGORIZED", "Sense categoria", uncategorized.length],
-                  ["PENDING", "Analitzant", pending.length],
-                  ["FAILED", "No llegibles", failed.length],
+                  ["ALL", t("expenses.all"), rows.length],
+                  ["UNCATEGORIZED", t("expenses.uncategorized"), uncategorized.length],
+                  ["PENDING", t("expenses.analyzing"), pending.length],
+                  ["FAILED", t("expenses.unreadable"), failed.length],
                 ]}
               />
               {inFlight ? (
                 <p className="text-sm text-muted-foreground" role="status">
-                  Hi ha factures en anàlisi. La llista s’actualitza sola.
+                  {t("expenses.analyzingNote")}
                 </p>
               ) : null}
               {visible.length === 0 ? (
-                <EmptyState title="Cap despesa amb aquest filtre" />
+                <EmptyState title={t("expenses.emptyFilter")} />
               ) : (
                 <>
                   <div className="hidden overflow-hidden rounded-xl border md:block">
                     <Table>
                       <TableHeader className="bg-muted/40">
                         <TableRow>
-                          <TableHead>Proveïdor</TableHead>
-                          <TableHead>Data</TableHead>
-                          <TableHead className="text-right">IVA</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead>Estat</TableHead>
-                          <TableHead className="w-44">Categoria</TableHead>
+                          <TableHead>{t("expenses.vendor")}</TableHead>
+                          <TableHead>{t("common.date")}</TableHead>
+                          <TableHead className="text-right">{t("common.vat")}</TableHead>
+                          <TableHead className="text-right">{t("common.total")}</TableHead>
+                          <TableHead>{t("common.status")}</TableHead>
+                          <TableHead className="w-44">{t("expenses.category")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {visible.map((row) => (
                           <TableRow key={row.id}>
                             <TableCell className="font-medium">
-                              {row.vendorName ?? <span className="text-muted-foreground">Proveïdor pendent</span>}
+                              {row.vendorName ?? <span className="text-muted-foreground">{t("expenses.vendorPending")}</span>}
                               {row.invoiceNumber ? <span className="block text-xs font-normal text-muted-foreground">{row.invoiceNumber}</span> : null}
                             </TableCell>
                             <TableCell>{formatDate(row.invoiceDate)}</TableCell>
@@ -197,7 +203,7 @@ export default function ExpensesPage() {
                       <li key={row.id} className="flex flex-col gap-3 rounded-xl border p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="truncate font-medium">{row.vendorName ?? "Proveïdor pendent"}</p>
+                            <p className="truncate font-medium">{row.vendorName ?? t("expenses.vendorPending")}</p>
                             <p className="text-sm text-muted-foreground">{formatDate(row.invoiceDate)}</p>
                           </div>
                           <ExpenseStatusBadge status={row.status} />
@@ -221,12 +227,12 @@ export default function ExpensesPage() {
       <UploadDialog
         open={uploading}
         onOpenChange={setUploading}
-        title="Puja factures rebudes"
-        description="PDF, PNG o JPG. Es desen en privat i se n’extreuen els imports automàticament."
+        title={t("expenses.uploadTitle")}
+        description={t("expenses.uploadDescription")}
         accept="application/pdf,image/png,image/jpeg"
         extensions={[".pdf", ".png", ".jpg", ".jpeg"]}
         multiple
-        submitLabel={(count) => (count > 1 ? `Puja ${count} factures` : "Puja la factura")}
+        submitLabel={(count) => (count > 1 ? t("expenses.uploadMany", { count }) : t("expenses.uploadOne"))}
         onUpload={upload}
       />
     </>
@@ -234,22 +240,23 @@ export default function ExpensesPage() {
 }
 
 function CategorySelect({ row, disabled, onSave }: { row: Expense; disabled: boolean; onSave: (row: Expense, category: string) => void }) {
+  const t = useT();
   if (row.status !== "PARSED") {
-    return <span className="text-xs text-muted-foreground">Quan s’analitzi</span>;
+    return <span className="text-xs text-muted-foreground">{t("expenses.whenAnalyzed")}</span>;
   }
   return (
     <NativeSelect
-      aria-label={`Categoria de ${row.vendorName ?? "la despesa"}`}
+      aria-label={t("expenses.categoryOf", { name: row.vendorName ?? t("expenses.theExpense") })}
       value={row.expenseCategory ?? ""}
       disabled={disabled}
       onChange={(event) => event.target.value && onSave(row, event.target.value)}
     >
       <option value="" disabled>
-        Sense categoria
+        {t("expenses.noCategory")}
       </option>
-      {CATEGORIES.map(([code, label]) => (
+      {CATEGORIES.map(([code, key]) => (
         <option key={code} value={code}>
-          {label}
+          {t(key)}
         </option>
       ))}
     </NativeSelect>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BanknoteIcon,
   FileTextIcon,
@@ -21,43 +21,45 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthScreen } from "@/components/auth-screen";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { OrganizationProvider, useOrganization } from "@/components/organization";
 import { notifyError } from "@/components/ui-kit";
+import { I18nProvider, useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface NavLink {
   href: string;
-  label: string;
+  labelKey: string;
   icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 }
 
-const GROUPS: Array<{ label: string | null; links: NavLink[] }> = [
+const GROUPS: Array<{ labelKey: string | null; links: NavLink[] }> = [
   {
-    label: null,
-    links: [{ href: "/", label: "Inici", icon: HouseIcon }],
+    labelKey: null,
+    links: [{ href: "/", labelKey: "nav.home", icon: HouseIcon }],
   },
   {
-    label: "Vendes",
+    labelKey: "nav.groupSales",
     links: [
-      { href: "/ingressos", label: "Ingressos", icon: BanknoteIcon },
-      { href: "/pressupostos", label: "Pressupostos", icon: FileTextIcon },
-      { href: "/recurrents", label: "Recurrents", icon: RepeatIcon },
-      { href: "/cataleg", label: "Catàleg", icon: PackageIcon },
+      { href: "/ingressos", labelKey: "nav.income", icon: BanknoteIcon },
+      { href: "/pressupostos", labelKey: "nav.quotes", icon: FileTextIcon },
+      { href: "/recurrents", labelKey: "nav.recurring", icon: RepeatIcon },
+      { href: "/cataleg", labelKey: "nav.catalog", icon: PackageIcon },
     ],
   },
   {
-    label: "Compres i banc",
+    labelKey: "nav.groupPurchases",
     links: [
-      { href: "/despeses", label: "Despeses", icon: ReceiptIcon },
-      { href: "/banc", label: "Banc", icon: LandmarkIcon },
+      { href: "/despeses", labelKey: "nav.expenses", icon: ReceiptIcon },
+      { href: "/banc", labelKey: "nav.bank", icon: LandmarkIcon },
     ],
   },
   {
-    label: "Gestió",
+    labelKey: "nav.groupManage",
     links: [
-      { href: "/impostos", label: "Impostos", icon: ScaleIcon },
-      { href: "/contactes", label: "Contactes", icon: UsersIcon },
+      { href: "/impostos", labelKey: "nav.taxes", icon: ScaleIcon },
+      { href: "/contactes", labelKey: "nav.contacts", icon: UsersIcon },
     ],
   },
 ];
@@ -66,25 +68,37 @@ const ALL_LINKS = GROUPS.flatMap((group) => group.links);
 
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <OrganizationProvider>
+    <I18nProvider>
+      <OrganizationProvider>
+        <ShellInner>{children}</ShellInner>
+      </OrganizationProvider>
+    </I18nProvider>
+  );
+}
+
+function ShellInner({ children }: { children: React.ReactNode }) {
+  const t = useT();
+  return (
+    <>
       <a
         href="#contingut"
         className="sr-only z-50 rounded-md bg-background px-3 py-2 text-sm font-medium shadow focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
       >
-        Salta al contingut
+        {t("common.skipToContent")}
       </a>
       <Frame>{children}</Frame>
       <Toaster position="top-right" richColors closeButton />
-    </OrganizationProvider>
+    </>
   );
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
   const { ready, organizationId } = useOrganization();
+  const t = useT();
 
   if (!ready) {
     return (
-      <div className="flex min-h-dvh flex-1 flex-col md:flex-row" aria-busy="true" aria-label="Carregant la sessió">
+      <div className="flex min-h-dvh flex-1 flex-col md:flex-row" aria-busy="true" aria-label={t("common.loadingSession")}>
         <div className="hidden w-64 shrink-0 border-r bg-sidebar p-4 md:block">
           <Skeleton className="h-8 w-40" />
           <div className="mt-8 flex flex-col gap-2">
@@ -123,6 +137,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 function Brand() {
+  const t = useT();
   return (
     <Link href="/" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
       <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground" aria-hidden>
@@ -130,7 +145,7 @@ function Brand() {
       </span>
       <span className="leading-tight">
         <span className="block text-sm font-semibold">MatchInvoice</span>
-        <span className="block text-xs text-muted-foreground">Gestió per a autònoms</span>
+        <span className="block text-xs text-muted-foreground">{t("brand.tagline")}</span>
       </span>
     </Link>
   );
@@ -138,12 +153,13 @@ function Brand() {
 
 function Navigation({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const t = useT();
   return (
-    <nav aria-label="Principal" className={cn("flex flex-col gap-4", className)}>
+    <nav aria-label={t("common.mainNav")} className={cn("flex flex-col gap-4", className)}>
       {GROUPS.map((group) => (
-        <div key={group.label ?? "inici"} className="flex flex-col gap-0.5">
-          {group.label ? <p className="px-3 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">{group.label}</p> : null}
-          {group.links.map(({ href, label, icon: Icon }) => {
+        <div key={group.labelKey ?? "inici"} className="flex flex-col gap-0.5">
+          {group.labelKey ? <p className="px-3 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">{t(group.labelKey)}</p> : null}
+          {group.links.map(({ href, labelKey, icon: Icon }) => {
             const active = pathname === href;
             return (
               <Link
@@ -157,7 +173,7 @@ function Navigation({ className, onNavigate }: { className?: string; onNavigate?
                 )}
               >
                 <Icon className="size-4" aria-hidden />
-                {label}
+                {t(labelKey)}
               </Link>
             );
           })}
@@ -169,61 +185,67 @@ function Navigation({ className, onNavigate }: { className?: string; onNavigate?
 
 function Account({ className }: { className?: string }) {
   const { organizationId, organizationName, displayName, clear } = useOrganization();
+  const t = useT();
   const [busy, setBusy] = useState(false);
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase" aria-hidden>
-        {(displayName || organizationName || "?").slice(0, 1)}
-      </span>
-      <div className="min-w-0 flex-1 leading-tight">
-        <p className="truncate text-sm font-medium" title={organizationId}>
-          {organizationName || "Organització"}
-        </p>
-        {displayName ? <p className="truncate text-xs text-muted-foreground">{displayName}</p> : null}
+    <div className={cn("flex flex-col gap-2", className)}>
+      <LanguageSwitcher className="h-8 w-full text-xs" />
+      <div className="flex items-center gap-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase" aria-hidden>
+          {(displayName || organizationName || "?").slice(0, 1)}
+        </span>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="truncate text-sm font-medium" title={organizationId}>
+            {organizationName || t("common.organization")}
+          </p>
+          {displayName ? <p className="truncate text-xs text-muted-foreground">{displayName}</p> : null}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("common.logout")}
+          title={t("common.logout")}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await api("/auth/logout", { method: "POST" });
+            } catch (cause) {
+              notifyError(cause, t("common.logoutFailed"));
+            } finally {
+              setBusy(false);
+              clear();
+            }
+          }}
+        >
+          <LogOutIcon />
+        </Button>
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Tanca la sessió"
-        title="Tanca la sessió"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await api("/auth/logout", { method: "POST" });
-          } catch (cause) {
-            notifyError(cause, "No s’ha pogut tancar la sessió");
-          } finally {
-            setBusy(false);
-            clear();
-          }
-        }}
-      >
-        <LogOutIcon />
-      </Button>
     </div>
   );
 }
 
 function MobileBar() {
   const pathname = usePathname();
+  const t = useT();
   const [open, setOpen] = useState(false);
-  const current = ALL_LINKS.find((link) => link.href === pathname);
+  const labels = useMemo(() => Object.fromEntries(ALL_LINKS.map((link) => [link.href, t(link.labelKey)])), [t]);
+  const currentLabel = labels[pathname];
   return (
     <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur md:hidden">
-      <Button type="button" variant="ghost" size="icon" aria-label="Obre el menú" aria-expanded={open} onClick={() => setOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" aria-label={t("common.menu")} aria-expanded={open} onClick={() => setOpen(true)}>
         <MenuIcon />
       </Button>
-      <p className="flex-1 truncate text-sm font-semibold">{current?.label ?? "MatchInvoice"}</p>
+      <p className="flex-1 truncate text-sm font-semibold">{currentLabel ?? "MatchInvoice"}</p>
       <span className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground" aria-hidden>
         MI
       </span>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="w-72 gap-0 p-0">
           <SheetHeader className="border-b">
-            <SheetTitle className="sr-only">Menú</SheetTitle>
-            <SheetDescription className="sr-only">Navega per les seccions de MatchInvoice</SheetDescription>
+            <SheetTitle className="sr-only">{t("common.menu")}</SheetTitle>
+            <SheetDescription className="sr-only">{t("common.menuDescription")}</SheetDescription>
             <Brand />
           </SheetHeader>
           <Navigation className="flex-1 overflow-y-auto p-3" onNavigate={() => setOpen(false)} />

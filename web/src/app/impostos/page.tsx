@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizationId } from "@/components/shell";
 import { CardsSkeleton, EmptyState, ErrorBanner, KpiCard, PageHeader, QuarterPicker, quarterRange, useLoad, useQuarter } from "@/components/ui-kit";
+import { useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { euros } from "@/lib/money";
 
@@ -29,6 +30,7 @@ interface Modelo130 {
 }
 
 export default function TaxesPage() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const [quarter, setQuarter] = useQuarter();
   const { from, to } = quarterRange(quarter);
@@ -41,7 +43,7 @@ export default function TaxesPage() {
     return { model303, model130 };
   }, [organizationId, from, to]);
 
-  const { data, error, loading, reload } = useLoad(load, "No s’ha pogut carregar la previsualització");
+  const { data, error, loading, reload } = useLoad(load, t("taxes.loadFailed"));
 
   const output = sumTax(data?.model303.issued ?? []);
   const input = sumTax(data?.model303.received ?? []);
@@ -49,14 +51,10 @@ export default function TaxesPage() {
 
   return (
     <>
-      <PageHeader
-        title="Impostos"
-        description="Previsió dels models 303 (IVA) i 130 (IRPF) a partir de les factures del trimestre."
-        actions={<QuarterPicker value={quarter} onChange={setQuarter} />}
-      />
+      <PageHeader title={t("taxes.title")} description={t("taxes.description")} actions={<QuarterPicker value={quarter} onChange={setQuarter} />} />
       <p className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
         <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
-        Previsualització orientativa. No és una presentació a l’AEAT; revisa-la amb la teva gestoria.
+        {t("taxes.disclaimer")}
       </p>
       <ErrorBanner message={error} onRetry={reload} />
       {loading ? (
@@ -70,18 +68,22 @@ export default function TaxesPage() {
       ) : data ? (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <KpiCard label={balance < 0n ? "Model 303 · a compensar" : "Model 303 · a ingressar"} value={euros((balance < 0n ? -balance : balance).toString())} hint="IVA repercutit menys suportat" />
-            <KpiCard label="Model 130 · a ingressar" value={euros(data.model130.paymentCents)} hint="20% del rendiment net" />
             <KpiCard
-              label="Rendiment net"
+              label={balance < 0n ? t("taxes.model303credit") : t("taxes.model303due")}
+              value={euros((balance < 0n ? -balance : balance).toString())}
+              hint={t("taxes.model303hint")}
+            />
+            <KpiCard label={t("taxes.model130")} value={euros(data.model130.paymentCents)} hint={t("taxes.model130hint")} />
+            <KpiCard
+              label={t("taxes.net")}
               value={euros(data.model130.netCents)}
-              hint={`Ingressos ${euros(data.model130.incomeCents)} · despeses ${euros(data.model130.expenseCents)}`}
+              hint={t("taxes.netHint", { income: euros(data.model130.incomeCents), expenses: euros(data.model130.expenseCents) })}
               tone={data.model130.netCents.startsWith("-") ? "negative" : undefined}
             />
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <RateCard title="IVA repercutit" description="De les factures emeses" rows={data.model303.issued} />
-            <RateCard title="IVA suportat" description="De les factures rebudes analitzades" rows={data.model303.received} />
+            <RateCard title={t("taxes.outputVat")} description={t("taxes.outputVatHint")} rows={data.model303.issued} />
+            <RateCard title={t("taxes.inputVat")} description={t("taxes.inputVatHint")} rows={data.model303.received} />
           </div>
         </>
       ) : null}
@@ -90,6 +92,7 @@ export default function TaxesPage() {
 }
 
 function RateCard({ title, description, rows }: { title: string; description: string; rows: Bucket[] }) {
+  const t = useT();
   const base = rows.reduce((total, row) => total + BigInt(row.baseCents), 0n);
   const tax = sumTax(rows);
   return (
@@ -100,14 +103,14 @@ function RateCard({ title, description, rows }: { title: string; description: st
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <EmptyState title="Cap base en aquest trimestre" />
+          <EmptyState title={t("taxes.emptyQuarter")} />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tipus</TableHead>
-                <TableHead className="text-right">Base</TableHead>
-                <TableHead className="text-right">Quota</TableHead>
+                <TableHead>{t("taxes.rate")}</TableHead>
+                <TableHead className="text-right">{t("common.base")}</TableHead>
+                <TableHead className="text-right">{t("taxes.quota")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -121,7 +124,7 @@ function RateCard({ title, description, rows }: { title: string; description: st
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell>Total</TableCell>
+                <TableCell>{t("common.total")}</TableCell>
                 <TableCell className="text-right tabular-nums">{euros(base)}</TableCell>
                 <TableCell className="text-right tabular-nums">{euros(tax)}</TableCell>
               </TableRow>

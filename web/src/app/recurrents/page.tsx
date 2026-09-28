@@ -14,7 +14,6 @@ import {
   ErrorBanner,
   Field,
   FormDialog,
-  MONTHS,
   NativeSelect,
   PageHeader,
   TableSkeleton,
@@ -22,6 +21,8 @@ import {
   notifySuccess,
   useLoad,
 } from "@/components/ui-kit";
+import { useT } from "@/i18n";
+import { monthsFor } from "@/i18n/core";
 import { api } from "@/lib/api";
 import { euroInput, euros } from "@/lib/money";
 
@@ -46,6 +47,7 @@ interface RecurringData {
 }
 
 export default function RecurringPage() {
+  const t = useT();
   const organizationId = useOrganizationId();
   const [creating, setCreating] = useState(false);
   const [running, setRunning] = useState(false);
@@ -65,11 +67,11 @@ export default function RecurringPage() {
     return { contacts: people.contacts.filter((contact) => contact.role === "CLIENT"), catalog: products.items, series: listed.recurringInvoices };
   }, [organizationId]);
 
-  const { data, error, initialLoading, reload } = useLoad(load, "No s’han pogut carregar les sèries");
+  const { data, error, initialLoading, reload } = useLoad(load, t("recurring.loadFailed"));
   const series = data?.series ?? [];
   const contacts = data?.contacts ?? [];
   const activeCount = series.filter((row) => row.active).length;
-  const monthName = MONTHS[new Date().getMonth()];
+  const monthName = monthsFor()[new Date().getMonth()];
 
   function openCreate() {
     setContactId("");
@@ -82,10 +84,14 @@ export default function RecurringPage() {
 
   async function create() {
     const header: typeof errors = {};
-    if (contactId === "") header.contactId = "Tria un client.";
+    if (contactId === "") header.contactId = t("validation.pickClient");
     const day = Number(dayOfMonth);
-    if (!/^\d+$/.test(dayOfMonth.trim()) || day < 1 || day > 28) header.dayOfMonth = "Un dia entre l’1 i el 28.";
-    const checked = validateLines(lines);
+    if (!/^\d+$/.test(dayOfMonth.trim()) || day < 1 || day > 28) header.dayOfMonth = t("validation.dayOfMonth");
+    const checked = validateLines(lines, {
+      concept: t("validation.concept"),
+      qtyMin: t("validation.qtyMin"),
+      money: { required: t("money.required"), invalid: t("money.invalid"), zero: t("money.zero") },
+    });
     setErrors(header);
     setLineErrors(checked.errors);
     if (Object.keys(header).length > 0 || checked.parsed === null) return;
@@ -95,11 +101,11 @@ export default function RecurringPage() {
         method: "POST",
         body: JSON.stringify({ contactId, dayOfMonth: day, lines: checked.parsed }),
       });
-      notifySuccess("Sèrie creada. Es facturarà cada mes.");
+      notifySuccess(t("recurring.created"));
       setCreating(false);
       await reload();
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut crear la sèrie");
+      notifyError(cause, t("recurring.createFailed"));
     } finally {
       setBusy(null);
     }
@@ -109,10 +115,10 @@ export default function RecurringPage() {
     setBusy(row.id);
     try {
       await api(`/organizations/${organizationId}/recurring-invoices/${row.id}/pause`, { method: "POST" });
-      notifySuccess(row.active ? `Sèrie de ${row.contactName} en pausa.` : `Sèrie de ${row.contactName} activada.`);
+      notifySuccess(row.active ? t("recurring.paused", { name: row.contactName }) : t("recurring.activated", { name: row.contactName }));
       await reload();
     } catch (cause) {
-      notifyError(cause, "No s’ha pogut canviar l’estat");
+      notifyError(cause, t("recurring.toggleFailed"));
     } finally {
       setBusy(null);
     }
@@ -124,12 +130,14 @@ export default function RecurringPage() {
       const body = await api<{ created: unknown[] }>(`/organizations/${organizationId}/recurring-invoices/run`, { method: "POST" });
       notifySuccess(
         body.created.length === 0
-          ? "Les factures d’aquest mes ja estaven generades."
-          : `S’han creat ${body.created.length} ${body.created.length === 1 ? "factura" : "factures"}. Les trobaràs a Ingressos.`,
+          ? t("recurring.alreadyGenerated")
+          : body.created.length === 1
+            ? t("recurring.generatedOne")
+            : t("recurring.generatedMany", { count: body.created.length }),
       );
       setRunning(false);
     } catch (cause) {
-      notifyError(cause, "No s’han pogut generar les factures");
+      notifyError(cause, t("recurring.generateFailed"));
     } finally {
       setBusy(null);
     }
@@ -150,11 +158,11 @@ export default function RecurringPage() {
     <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => toggle(row)}>
       {row.active ? (
         <>
-          <PauseIcon /> Pausa
+          <PauseIcon /> {t("recurring.pause")}
         </>
       ) : (
         <>
-          <PlayIcon /> Activa
+          <PlayIcon /> {t("recurring.activate")}
         </>
       )}
     </Button>
@@ -163,15 +171,15 @@ export default function RecurringPage() {
   return (
     <>
       <PageHeader
-        title="Recurrents"
-        description="Sèries mensuals per a un client: quotes, manteniments o lloguers que factures cada mes."
+        title={t("recurring.title")}
+        description={t("recurring.description")}
         actions={
           <>
             <Button variant="outline" onClick={() => setRunning(true)} disabled={initialLoading || activeCount === 0}>
-              <RepeatIcon /> Genera les de {monthName}
+              <RepeatIcon /> {t("recurring.generateMonth", { month: monthName })}
             </Button>
             <Button onClick={openCreate} disabled={initialLoading || contacts.length === 0}>
-              <PlusIcon /> Nova sèrie
+              <PlusIcon /> {t("recurring.newSeries")}
             </Button>
           </>
         }
@@ -184,37 +192,39 @@ export default function RecurringPage() {
         contacts.length === 0 && series.length === 0 ? (
           <EmptyState
             icon={UsersIcon}
-            title="Primer necessites un client"
-            hint="Cada sèrie factura un client. Afegeix-lo a Contactes."
-            action={<Button render={<Link href="/contactes?nou=1" />}>Afegeix un client</Button>}
+            title={t("recurring.needClient")}
+            hint={t("recurring.needClientHint")}
+            action={<Button render={<Link href="/contactes?nou=1" />}>{t("recurring.addClient")}</Button>}
           />
         ) : series.length === 0 ? (
           <EmptyState
             icon={RepeatIcon}
-            title="Encara no hi ha sèries recurrents"
-            hint="Crea una sèrie i cada mes podràs generar-ne la factura amb un clic."
+            title={t("recurring.empty")}
+            hint={t("recurring.emptyHint")}
             action={
               <Button onClick={openCreate}>
-                <PlusIcon /> Nova sèrie
+                <PlusIcon /> {t("recurring.newSeries")}
               </Button>
             }
           />
         ) : (
-          <section aria-label="Sèries" className="flex flex-col gap-3">
+          <section aria-label={t("recurring.listLabel")} className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              {activeCount} {activeCount === 1 ? "sèrie activa" : "sèries actives"} de {series.length}.
+              {activeCount === 1
+                ? t("recurring.activeOne", { total: series.length })
+                : t("recurring.activeMany", { count: activeCount, total: series.length })}
             </p>
             <div className="hidden overflow-hidden rounded-xl border md:block">
               <Table>
                 <TableHeader className="bg-muted/40">
                   <TableRow>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Concepte</TableHead>
-                    <TableHead>Dia</TableHead>
-                    <TableHead className="text-right">Total mensual</TableHead>
-                    <TableHead>Estat</TableHead>
+                    <TableHead>{t("common.client")}</TableHead>
+                    <TableHead>{t("recurring.concept")}</TableHead>
+                    <TableHead>{t("recurring.dayCol")}</TableHead>
+                    <TableHead className="text-right">{t("recurring.monthlyTotal")}</TableHead>
+                    <TableHead>{t("common.status")}</TableHead>
                     <TableHead className="text-right">
-                      <span className="sr-only">Accions</span>
+                      <span className="sr-only">{t("common.actions")}</span>
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -225,7 +235,9 @@ export default function RecurringPage() {
                       <TableCell className="max-w-64 truncate text-muted-foreground" title={row.lines.map((line) => line.description).join(", ")}>
                         {row.lines.map((line) => line.description).join(", ")}
                       </TableCell>
-                      <TableCell className="tabular-nums">Dia {row.dayOfMonth}</TableCell>
+                      <TableCell className="tabular-nums">
+                        {t("common.day")} {row.dayOfMonth}
+                      </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">{monthly(row)}</TableCell>
                       <TableCell>
                         <ActiveBadge active={row.active} />
@@ -243,7 +255,7 @@ export default function RecurringPage() {
                     <div className="min-w-0">
                       <p className="font-medium">{row.contactName}</p>
                       <p className="truncate text-sm text-muted-foreground">
-                        Dia {row.dayOfMonth} · {row.lines.map((line) => line.description).join(", ")}
+                        {t("common.day")} {row.dayOfMonth} · {row.lines.map((line) => line.description).join(", ")}
                       </p>
                     </div>
                     <ActiveBadge active={row.active} />
@@ -262,17 +274,17 @@ export default function RecurringPage() {
       <FormDialog
         open={creating}
         onOpenChange={setCreating}
-        title="Nova sèrie recurrent"
-        description="Tria el client, el dia del mes i les línies. El preu és en euros."
-        submitLabel="Crea la sèrie"
+        title={t("recurring.dialogTitle")}
+        description={t("recurring.dialogDescription")}
+        submitLabel={t("recurring.dialogSubmit")}
         busy={busy === "create"}
         onSubmit={create}
         wide
       >
         <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-          <Field id="rec-contact" label="Client" error={errors.contactId}>
+          <Field id="rec-contact" label={t("common.client")} error={errors.contactId}>
             <NativeSelect id="rec-contact" value={contactId} onChange={(event) => setContactId(event.target.value)}>
-              <option value="">Tria un client</option>
+              <option value="">{t("recurring.pickClient")}</option>
               {contacts.map((contact) => (
                 <option key={contact.id} value={contact.id}>
                   {contact.legalName}
@@ -280,7 +292,7 @@ export default function RecurringPage() {
               ))}
             </NativeSelect>
           </Field>
-          <Field id="rec-day" label="Dia del mes" error={errors.dayOfMonth} hint="De l’1 al 28.">
+          <Field id="rec-day" label={t("recurring.dayOfMonth")} error={errors.dayOfMonth} hint={t("recurring.dayHint")}>
             <Input id="rec-day" inputMode="numeric" value={dayOfMonth} onChange={(event) => setDayOfMonth(event.target.value)} />
           </Field>
         </div>
@@ -290,9 +302,9 @@ export default function RecurringPage() {
       <FormDialog
         open={running}
         onOpenChange={setRunning}
-        title={`Genera les factures de ${monthName}`}
-        description={`Es crearà una factura per a cada sèrie activa (${activeCount}). Si ja estan generades aquest mes, no se’n duplica cap.`}
-        submitLabel="Genera les factures"
+        title={t("recurring.runTitle", { month: monthName })}
+        description={t("recurring.runDescription", { count: activeCount })}
+        submitLabel={t("recurring.runSubmit")}
         busy={busy === "run"}
         onSubmit={run}
       />
