@@ -1,0 +1,12 @@
+.git
+node_modules
+generated
+coverage
+dist
+web
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+!.env.production.example

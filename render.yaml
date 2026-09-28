@@ -1,0 +1,50 @@
+# Render Blueprint for the MatchInvoice API. The web panel deploys to Vercel from web/.
+# Values marked `sync: false` are secrets: Render asks for them when the Blueprint is
+# created. They never live in git. See DEPLOY.md.
+
+services:
+  - type: web
+    name: matchinvoice-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/live
+    autoDeploy: true
+    buildFilter:
+      ignoredPaths:
+        - web/**
+        - "**/*.md"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      - key: REDIS_URL
+        sync: false
+      - key: BULLMQ_DRAIN_DELAY_SECONDS
+        value: "300"
+      - key: BULLMQ_STALLED_INTERVAL_MS
+        value: "300000"
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_BUCKET
+        value: matchinvoice
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+      - key: WEB_ORIGIN
+        sync: false
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: COOKIE_SECURE
+        value: "true"
