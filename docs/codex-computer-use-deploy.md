@@ -22,10 +22,11 @@ La guia humana equivalent és [`DEPLOY.md`](../DEPLOY.md). Si la interfície d�
    - **Mai** els enganxis a: el xat amb l’usuari, l’informe final, un fitxer del repositori, un commit, un issue, un pull request, un camp de Vercel que comenci per `NEXT_PUBLIC_`, ni un formulari públic.
    - A l’informe, escriu només `[desat a Render]` en lloc del valor.
    - Si has de retenir un secret entre pestanyes i el porta-retalls no basta, ATURA’T i demana a l’usuari que el desi al seu gestor de contrasenyes.
+   - `DATABASE_URL`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` i `S3_FORCE_PATH_STYLE` ja són al fitxer local `.env.production.local` (arrel del repositori; el git l’ignora). Pots llegir-lo només per enganxar els valors a Render. **Mai** n’escriguis el contingut al xat, a l’informe, al git ni a Vercel.
 4. **No són secrets** (es poden mostrar a l’informe): URL de Render, domini de Vercel, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, noms de projecte, `GOOGLE_CLOUD_PROJECT_ID`, `DOCUMENT_AI_LOCATION`, `DOCUMENT_AI_PROCESSOR_ID`, correu del compte de servei.
 5. **No canviïs codi** ni facis commits. Aquest runbook només crea serveis i configura variables.
-6. **Regió:** sempre **Frankfurt / `eu-central-1`** (és l’única regió europea de Render; tot junt redueix latència).
-7. **Nom:** `matchinvoice` a tot arreu on es demani un nom.
+6. **Regió.** Supabase ja és **Sydney / `ap-southeast-2`** (projecte `invoices`, ref `<project-ref>`). No creïs un altre projecte i no triïs Frankfurt ni `eu-central-1`. **Upstash** i **Render**: la regió més propera a Sydney que el pla gratuït ofereixi — **Sydney** si hi surt, si no **Singapore**. Escriu a l’informe quina has triat. **Vercel** es queda **global** (no triïs regió). Si ni Sydney ni Singapore són al pla Free, **ATURA’T**; no acceptis un pla de pagament ni caiguis a Europa.
+7. **Nom:** `matchinvoice` per al bucket (ja existeix), Upstash, Render i Vercel. El projecte de Supabase ja es diu `invoices`; no el reanomenis ni en creïs un altre.
 8. Després de cada pas, fes la **Comprova**. Si no es compleix, ves a la secció «Si falla» d’aquell servei. Si després de dos intents continua fallant, ATURA’T i explica què veus.
 
 ## Registre de valors (omple’l mentre avances)
@@ -34,11 +35,14 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 
 | Clau | Valor | Secret |
 | --- | --- | --- |
-| Supabase project ref | `<ref>` | No |
-| Contrasenya BD Supabase | `[desada per l’usuari]` | **Sí** |
-| `DATABASE_URL` | `[desat a Render]` | **Sí** |
-| `S3_ENDPOINT` | `https://<ref>.storage.supabase.co/storage/v1/s3` | No |
-| `S3_REGION` | `eu-central-1` | No |
+| Supabase project name | `invoices` | No |
+| Supabase project ref | `<project-ref>` | No |
+| Supabase region | Sydney, `ap-southeast-2` | No |
+| Rol de connexió | `matchinvoice` (Session pooler, no `postgres`) | No |
+| Contrasenya BD Supabase | `[a .env.production.local; no la mostris]` | **Sí** |
+| `DATABASE_URL` | `[desat a Render des del fitxer local]` | **Sí** |
+| `S3_ENDPOINT` | `[a .env.production.local; forma https://<ref>.storage.supabase.co/storage/v1/s3]` | No |
+| `S3_REGION` | `ap-southeast-2` | No |
 | `S3_BUCKET` | `matchinvoice` | No |
 | `S3_ACCESS_KEY` | `[desat a Render]` | **Sí** |
 | `S3_SECRET_KEY` | `[desat a Render]` | **Sí** |
@@ -63,59 +67,48 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 
 ---
 
-## Pas 2 — Supabase
+## Pas 2 — Supabase (ja creat)
 
-### 2.1 Compte i projecte
+No creïs un projecte, no generis una contrasenya nova i no facis **Reset database password**.
 
-1. **Obre** `https://supabase.com/dashboard`.
+### 2.1 Comprovar el projecte
+
+1. **Obre** `https://supabase.com/dashboard/project/<project-ref>`.
 2. Si demana iniciar sessió → **Clica** **Continue with GitHub**. Si apareix login de GitHub, 2FA o verificació de correu → **ATURA’T**.
-3. Si apareix un formulari de nova organització: **Name** `matchinvoice`, **Type** `Personal`, **Plan** **Free** → **Create organization**. Si el pla per defecte no és Free, canvia’l a Free; si no hi ha Free → ATURA’T.
-4. **Clica** **New project**.
-5. **Tria / Escriu**:
-   - **Organization**: la creada o l’existent (pla Free).
-   - **Project name**: `matchinvoice`
-   - **Database Password**: **Clica** **Generate a password** i després el botó de **Copy** del camp.
-   - **Region**: **Central EU (Frankfurt)** (`eu-central-1`).
-   - Deixa la resta per defecte. Si hi ha una opció de mida de computació (*Compute size*), deixa la gratuïta (*Nano* / *Micro* dins del pla Free).
-6. **ATURA’T** abans de continuar: `ATURADA Supabase: acabo de generar la contrasenya de la base de dades i és al porta-retalls. Desa-la al teu gestor de contrasenyes ara. Digues «fet».` (És l’únic moment en què es pot veure.)
-7. **Clica** **Create new project**.
-8. **Comprova**: apareix el panell del projecte i, al cap d’uns minuts, desapareix l’estat *Setting up project* / *Coming up*. Anota el **project ref** (la part `xxxxxxxx` de la URL `supabase.com/dashboard/project/xxxxxxxx`).
+3. **Comprova**:
+   - el nom del projecte és `invoices` (no en creïs un que es digui `matchinvoice`);
+   - el ref de la URL és `<project-ref>`;
+   - la regió és **Oceania (Sydney)** / `ap-southeast-2`, no Frankfurt ni `eu-central-1`.
 
 ### 2.2 `DATABASE_URL`
 
 1. **Clica** el botó **Connect** de la barra superior del projecte.
-2. A la finestra, busca la secció **Session pooler** (pot estar sota *Connection string* → *URI*, o com a opció del desplegable *Method*). Ha de tenir el **port 5432** i un host `aws-0-eu-central-1.pooler.supabase.com`.
-   - No facis servir **Direct connection** (host `db.<ref>.supabase.co`) ni **Transaction pooler** (port 6543).
-3. **Clica** **Copy** a la URI del Session pooler. Té la forma `postgresql://postgres.<ref>:[YOUR-PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:5432/postgres`.
-4. La URI té el text `[YOUR-PASSWORD]`. **No** la completis aquí. La completaràs directament al camp de Render (pas 4) amb la contrasenya que l’usuari té desada; allà demanaràs a l’usuari que enganxi la contrasenya (vegeu 4.1).
-5. **Comprova**: la URI copiada conté `pooler.supabase.com:5432`.
+2. A la finestra, busca la secció **Session pooler** (pot estar sota *Connection string* → *URI*, o com a opció del desplegable *Method*). Ha de tenir el **port 5432** i l’amfitrió `aws-0-ap-southeast-2.pooler.supabase.com`.
+   - No facis servir **Direct connection** (host `db.<project-ref>.supabase.co`) ni **Transaction pooler** (port 6543).
+3. **Comprova** que l’usuari de la URI és `matchinvoice.<project-ref>`, no `postgres.<project-ref>`. La forma, sense contrasenya, és `postgresql://matchinvoice.<project-ref>:[CONTRASENYA]@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres`.
+4. No completis ni copiïs la contrasenya aquí. El valor sencer ja és `DATABASE_URL` a `.env.production.local`. L’enganxaràs només al camp de Render (pas 4), sense escriure’l al xat ni a l’informe.
+5. Les migracions **ja estan aplicades**. No les executis a mà.
 
 ### 2.3 Bucket privat
 
 1. Menú esquerre → **Storage**.
-2. **Clica** **New bucket**.
-3. **Escriu** **Name**: `matchinvoice`. **Public bucket**: **desactivat** (interruptor apagat). No activis restriccions de mida ni de tipus MIME.
-4. **Clica** **Create bucket** (o **Save**).
-5. **Comprova**: `matchinvoice` apareix a la llista de buckets amb una etiqueta o icona de privat (no *Public*).
+2. **Comprova**: el bucket `matchinvoice` ja existeix i és privat (no *Public*). No en creïs un altre. No activis *Public bucket*.
 
-### 2.4 Claus S3
+### 2.4 Claus S3 i extensions
 
 1. A **Storage**, **Clica** **Settings** (o **S3 Configuration**; en algunes versions és a **Project Settings → Storage**).
-2. **Comprova** que **S3 protocol connection** / **Enable connection via S3 protocol** està activat. Si està apagat, activa’l i **Save**.
-3. A **S3 Connection** llegeix:
-   - **Endpoint** → anota’l com a `S3_ENDPOINT` (no és secret). Ha d’acabar en `/storage/v1/s3`.
-   - **Region** → anota-la com a `S3_REGION` (esperat `eu-central-1`).
-4. A **S3 Access Keys** → **Clica** **New access key** → **Description**: `matchinvoice-api` → **Create access key**.
-5. Apareixen **Access key ID** i **Secret access key**. El secret **només es mostra ara**. No tanquis aquest diàleg encara: obre Render en una pestanya nova (pas 4) i enganxa’ls allà directament. Si no pots mantenir el diàleg obert, **ATURA’T** i demana a l’usuari que desi els dos valors al gestor de contrasenyes.
-6. **Comprova**: la llista **S3 Access Keys** mostra `matchinvoice-api`.
+2. **Comprova** que **S3 protocol connection** / **Enable connection via S3 protocol** està activat. Si està apagat, activa’l i **Save**. Si diu que S3 requereix un pla de pagament, ATURA’T.
+3. **Comprova** que la **Region** és `ap-southeast-2` i que l’**Endpoint** acaba en `/storage/v1/s3`. No copiïs l’endpoint ni les claus a l’informe: ja són al fitxer local.
+4. No creïs una clau S3 nova. `S3_ACCESS_KEY` i `S3_SECRET_KEY` ja són a `.env.production.local`. El secret d’una clau ja creada no es torna a mostrar.
+5. **Database** → **Extensions**. **Comprova** que `pg_trgm` i `pgcrypto` estan activades.
 
 ### Si falla (Supabase)
 
-- *No puc triar Frankfurt*: tria **West EU (Paris)** (`eu-west-3`) o **West EU (Ireland)** (`eu-west-1`) i anota-ho; després `S3_REGION` serà aquesta regió.
-- *El projecte no acaba de crear-se en 10 minuts*: recarrega la pàgina. Si mostra error, ATURA’T.
+- *La regió no és Sydney, el ref no coincideix o l’usuari del pooler és `postgres`*: ATURA’T. No creïs un projecte nou.
 - *No trobo Session pooler*: al diàleg **Connect**, canvia la pestanya o el desplegable a *Session pooler* / *Shared pooler*. Si només hi ha *Dedicated pooler* de pagament, ATURA’T.
-- *No trobo S3 Access Keys*: busca a **Project Settings → Storage** o a la cerca del panell «S3». Si diu que S3 requereix un pla de pagament, ATURA’T.
-- *He tancat el diàleg sense copiar el secret S3*: elimina la clau (menú **⋯** → **Revoke / Delete**) i crea’n una de nova.
+- *El bucket `matchinvoice` no hi és o és públic*: ATURA’T.
+- *Falta `pg_trgm` o `pgcrypto`*: activa-les a **Database → Extensions**. En aquest projecte ja hi haurien de ser.
+- *No trobo la configuració S3*: busca a **Project Settings → Storage** o a la cerca del panell «S3». Si diu que S3 requereix un pla de pagament, ATURA’T.
 
 ---
 
@@ -126,7 +119,7 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 3. **Clica** **Redis** (menú superior o lateral) → **Create Database**.
 4. **Escriu / Tria**:
    - **Name**: `matchinvoice`
-   - **Primary Region**: **eu-central-1 (Frankfurt)** (proveïdor AWS).
+   - **Primary Region**: la més propera a Sydney que el pla **Free** ofereixi. Tria **Sydney** (`ap-southeast-2`) si hi surt; si no, **Singapore** (`ap-southeast-1`). No triïs Frankfurt.
    - **Read Regions**: cap.
    - **Plan**: **Free**. Si el formulari mostra *Pay as You Go* o *Fixed* seleccionat, canvia a **Free**. Si no hi ha Free → **ATURA’T**.
    - **Eviction**: **desactivat**.
@@ -139,7 +132,7 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 ### Si falla (Upstash)
 
 - *Només veig `redis://` sense la segona `s`*: canvia `redis://` per `rediss://` en enganxar-lo a Render (Upstash sempre usa TLS).
-- *Frankfurt no apareix*: tria **eu-west-1 (Ireland)** i anota-ho.
+- *Ni Sydney ni Singapore apareixen al pla Free*: ATURA’T. No creïs la base de dades a Europa ni amb un pla de pagament.
 - *Demana targeta per crear la base de dades*: ATURA’T.
 
 ---
@@ -155,17 +148,17 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 5. A **Connect a repository**: si no hi surt `guillem9988/invoices`, **Clica** **Configure account** / **Connect GitHub** i dona accés al repositori `invoices` (només aquest). Pantalla d’autorització de GitHub amb contrasenya o 2FA → **ATURA’T**.
 6. **Clica** **Connect** al costat de `guillem9988/invoices`.
 7. **Escriu** **Blueprint Name**: `matchinvoice`. **Branch**: `main`. **Blueprint Path**: `render.yaml` (per defecte).
-8. **Comprova**: Render mostra un servei **matchinvoice-api**, tipus **Web Service**, runtime **Docker**, pla **Free**, regió **Frankfurt**. Si el pla no és Free → **ATURA’T** (no l’acceptis).
-9. Render mostra camps per a les variables amb `sync: false`. Omple-les:
+8. **Comprova**: Render mostra un servei **matchinvoice-api**, tipus **Web Service**, runtime **Docker**, pla **Free**. El blueprint encara marca la regió **Frankfurt** perquè `render.yaml` té `region: frankfurt`. Abans d’aplicar, canvia la regió a la més propera a Sydney que el pla **Free** ofereixi: **Sydney** si hi surt, si no **Singapore**. Si el pla no és Free → **ATURA’T** (no l’acceptis). Si no pots canviar la regió i l’única opció és Frankfurt → **ATURA’T** (`ATURADA Render: el Blueprint força Frankfurt i no puc triar Singapore ni Sydney al pla Free.`).
+9. Render mostra camps per a les variables amb `sync: false`. Omple-les des de `.env.production.local` i des d’Upstash. No escriguis cap secret al xat. Si no pots llegir el fitxer local, **ATURA’T**: `ATURADA Render: enganxa tu, des de .env.production.local, DATABASE_URL, S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY i S3_SECRET_KEY. No els enviïs al xat. DATABASE_URL ha d’usar el rol matchinvoice i l’amfitrió aws-0-ap-southeast-2.pooler.supabase.com:5432. S3_REGION ha de ser ap-southeast-2. Digues «fet».`
 
 | Camp a Render | Què hi enganxes |
 | --- | --- |
-| `DATABASE_URL` | La URI del Session pooler (pas 2.2). Enganxa-la i **ATURA’T**: `ATURADA Render: he enganxat la URL de Supabase a DATABASE_URL. Substitueix-hi [YOUR-PASSWORD] per la contrasenya de la base de dades (sense claudàtors; si té símbols, @→%40, #→%23, /→%2F). Digues «fet».` |
+| `DATABASE_URL` | El valor de `DATABASE_URL` del fitxer local. Rol `matchinvoice`, host `aws-0-ap-southeast-2.pooler.supabase.com:5432`. No el reconstrueixis amb l’usuari `postgres`. |
 | `REDIS_URL` | La URL `rediss://…` d’Upstash (pas 3.7) |
-| `S3_ENDPOINT` | Endpoint de Supabase Storage (pas 2.4.3) |
-| `S3_REGION` | Regió de Supabase Storage (pas 2.4.3) |
-| `S3_ACCESS_KEY` | Access key ID (pas 2.4.5) |
-| `S3_SECRET_KEY` | Secret access key (pas 2.4.5) |
+| `S3_ENDPOINT` | El valor de `S3_ENDPOINT` del fitxer local |
+| `S3_REGION` | `ap-southeast-2` (el valor de `S3_REGION` del fitxer local) |
+| `S3_ACCESS_KEY` | El valor de `S3_ACCESS_KEY` del fitxer local |
+| `S3_SECRET_KEY` | El valor de `S3_SECRET_KEY` del fitxer local |
 | `WEB_ORIGIN` | `https://matchinvoice.vercel.app` (provisional; es corregeix al pas 6) |
 
    Deixa **buits** `GOOGLE_CLOUD_PROJECT_ID`, `DOCUMENT_AI_PROCESSOR_ID` i `GOOGLE_APPLICATION_CREDENTIALS_JSON`: s’omplen al pas 8 (opcional). Sense ells, l’API fa servir OpenAI o el lector local.
@@ -178,7 +171,7 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 
 1. **Clica** el servei **matchinvoice-api** → pestanya **Logs** (o **Events**).
 2. Espera (pot trigar 5–10 minuts la primera vegada). **Comprova** als logs, en aquest ordre:
-   - `Applying migration` … i `All migrations have been successfully applied` (o `No pending migrations to apply`);
+   - `No pending migrations to apply` (les migracions ja estan aplicades; `All migrations have been successfully applied` també val);
    - una o més línies `Server listening at http://…:10000` (el port pot ser un altre si Render n’assigna un de diferent);
    - `invoice processing worker started in the API process`;
    - l’estat del servei passa a **Live** (verd).
@@ -192,13 +185,13 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 
 ### Si falla (Render)
 
-- *Logs: `P1001` / `Can't reach database server`*: `DATABASE_URL` no és el Session pooler (5432) o té `[YOUR-PASSWORD]`. Ves a **Environment**, corregeix-la (demana a l’usuari la contrasenya com al pas 4.1) → **Save Changes**.
+- *Logs: `P1001` / `Can't reach database server`*: `DATABASE_URL` no és el Session pooler de Sydney (`aws-0-ap-southeast-2.pooler.supabase.com:5432`) o encara té un marcador de contrasenya. Ves a **Environment** i torna a enganxar el valor del fitxer local (sense mostrar-lo) → **Save Changes**.
 - *Logs: `password authentication failed`*: contrasenya incorrecta o amb símbols sense codificar. ATURA’T i demana a l’usuari que la revisi.
 - *Logs: error de certificat (`self-signed certificate`) durant `prisma migrate deploy`*: a **Environment** → **Add Environment Variable** → `DIRECT_URL` = el mateix valor que `DATABASE_URL` acabat en `?sslmode=require&sslaccept=accept_invalid_certs` (demana a l’usuari que l’enganxi) → **Save Changes**.
-- *Logs: `permission denied to create extension`*: Supabase → **Database** → **Extensions** → activa `pg_trgm` i `pgcrypto` → a Render, **Manual Deploy** → **Deploy latest commit**.
+- *Logs: `permission denied to create extension`*: en aquest projecte `pg_trgm` i `pgcrypto` ja estan activades. Comprova que `DATABASE_URL` usa el rol `matchinvoice` del Session pooler de Sydney, no `postgres`. Si falten, activa-les a Supabase → **Database** → **Extensions** i a Render fes **Manual Deploy** → **Deploy latest commit**.
 - *Logs: `WEB_ORIGIN is required in production`*: afegeix `WEB_ORIGIN` a **Environment**.
 - *`/health` mostra `redis: down`*: `REDIS_URL` ha de començar per `rediss://`. Corregeix-la a **Environment**.
-- *`/health` mostra `minio: down` amb `SignatureDoesNotMatch`*: `S3_REGION` no coincideix amb la de Supabase. Amb `NoSuchBucket`: el bucket no es diu `matchinvoice`. Amb `InvalidAccessKeyId`: torna a crear la clau S3 (pas 2.4).
+- *`/health` mostra `minio: down` amb `SignatureDoesNotMatch`*: `S3_REGION` no és `ap-southeast-2`. Amb `NoSuchBucket`: el bucket no es diu `matchinvoice`. Amb `InvalidAccessKeyId`: no revoquis la clau que ja existeix; torna a enganxar `S3_ACCESS_KEY` i `S3_SECRET_KEY` des de `.env.production.local`. Si l’usuari confirma que no serveixen, ATURA’T abans de crear-ne una de nova.
 - *El build falla per memòria o temps*: torna-ho a provar amb **Manual Deploy** → **Clear build cache & deploy**. Si torna a fallar, ATURA’T i copia (sense secrets) les darreres 30 línies del log a l’informe.
 - *La primera càrrega triga ~1 minut*: és normal al pla Free (el servei dorm).
 
@@ -216,6 +209,7 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
    - **Framework Preset**: **Next.js** (si no ho detecta sol, tria’l).
    - **Root Directory**: **Clica** **Edit** → tria la carpeta **`web`** → **Continue**.
    - **Build and Output Settings**: no toquis res.
+   - No triïs regió: Vercel es queda **global**.
    - **Environment Variables**: **Key** `NEXT_PUBLIC_API_URL`, **Value** = la URL API Render del pas 4.2 (sense barra final) → **Add**.
      Aquest valor **no** és secret i és l’únic que va a Vercel. Cap secret de Supabase, Upstash ni OpenAI va a Vercel.
 7. **Clica** **Deploy**.
@@ -354,9 +348,9 @@ Retorna a l’usuari exactament això, sense cap secret:
 ```
 Desplegament MatchInvoice
 - GitHub: main amb Dockerfile i render.yaml ✔/✘
-- Supabase: projecte matchinvoice (ref <ref>, regió <regió>), bucket matchinvoice privat, clau S3 matchinvoice-api ✔/✘
-- Upstash: base de dades matchinvoice (Free, <regió>) ✔/✘
-- Render: matchinvoice-api (Free, Frankfurt) a <URL API Render> ✔/✘ — /health: <status, postgres, redis, minio>
+- Supabase: projecte invoices (ref <project-ref>, Sydney ap-southeast-2, rol matchinvoice), bucket matchinvoice privat, extensions pg_trgm i pgcrypto, migracions ja aplicades ✔/✘
+- Upstash: base de dades matchinvoice (Free, Sydney o Singapore — la més propera a Sydney) ✔/✘
+- Render: matchinvoice-api (Free, Sydney o Singapore — no Frankfurt) a <URL API Render> ✔/✘ — /health: <status, postgres, redis, minio>
 - Vercel: matchinvoice (Hobby) a <Domini Vercel> ✔/✘ — mode A (NEXT_PUBLIC_API_URL) o mode B (API_PROXY_URL)
 - Verificació: registre ✔/✘, recàrrega amb sessió ✔/✘, logout ✔/✘, login ✔/✘
 - Google Document AI (opcional): projecte <project-id>, processador Invoice Parser <id> a eu, compte de servei matchinvoice-docai ✔/✘/saltat — facturació activada per l’usuari ✔/✘
