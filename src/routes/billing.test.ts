@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { InvoiceStatus } from "../../generated/prisma/client.js";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "../lib/prisma.js";
 import { buildServer } from "../server.js";
@@ -237,5 +238,82 @@ describe("issued invoices, quotes, and tax preview", () => {
 
     await database.prisma.organization.delete({ where: { id: organizationId } });
     await database.prisma.organization.delete({ where: { id: stranger.organizationId } });
+  });
+
+  it("previews modelo 130 as 20% of a positive net and zero on a loss", async () => {
+    const created = await inject({
+      method: "POST",
+      url: "/organizations",
+      payload: { legalName: "Model 130 SL", taxId: "B13000001" },
+    });
+    const organizationId = (created.json() as { id: string }).id;
+    const contact = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/contacts`,
+      payload: { legalName: "Client 130", taxId: "B13000002", email: "130@example.com", role: "CLIENT" },
+    });
+    const contactId = (contact.json() as { id: string }).id;
+    await database.prisma.issuedInvoice.create({
+      data: {
+        organizationId,
+        contactId,
+        seriesNumber: "130-1",
+        invoiceDate: new Date("2026-02-01T00:00:00.000Z"),
+        baseAmountCents: 82645n,
+        taxAmountCents: 17355n,
+        totalAmountCents: 100000n,
+      },
+    });
+    await database.prisma.invoice.create({
+      data: {
+        organizationId,
+        storageKey: "130-expense",
+        originalFilename: "despesa.pdf",
+        mimeType: "application/pdf",
+        fileSizeBytes: 10,
+        status: InvoiceStatus.PARSED,
+        invoiceDate: new Date("2026-02-02T00:00:00.000Z"),
+        totalAmountCents: 40000n,
+      },
+    });
+    const preview = await inject({
+      method: "GET",
+      url: `/organizations/${organizationId}/taxes/130?from=2026-01-01&to=2026-03-31`,
+    });
+    expect(preview.statusCode).toBe(200);
+    const body = preview.json() as {
+      disclaimer: string;
+      incomeCents: string;
+      expenseCents: string;
+      netCents: string;
+      rate: string;
+      paymentCents: string;
+    };
+    expect(body.disclaimer).toMatch(/not an AEAT filing/);
+    expect(body.incomeCents).toBe("100000");
+    expect(body.expenseCents).toBe("40000");
+    expect(body.netCents).toBe("60000");
+    expect(body.rate).toBe("0.20");
+    expect(body.paymentCents).toBe("12000");
+
+    await database.prisma.issuedInvoice.create({
+      data: {
+        organizationId,
+        contactId,
+        seriesNumber: "130-R",
+        invoiceDate: new Date("2026-05-01T00:00:00.000Z"),
+        baseAmountCents: -200000n,
+        taxAmountCents: 0n,
+        totalAmountCents: -200000n,
+      },
+    });
+    const loss = await inject({
+      method: "GET",
+      url: `/organizations/${organizationId}/taxes/130?from=2026-01-01&to=2026-06-30`,
+    });
+    expect((loss.json() as { netCents: string; paymentCents: string }).netCents).toBe("-140000");
+    expect((loss.json() as { paymentCents: string }).paymentCents).toBe("0");
+
+    await database.prisma.organization.delete({ where: { id: organizationId } });
   });
 });

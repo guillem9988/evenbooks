@@ -20,10 +20,18 @@ interface Preview {
   received: Bucket[];
 }
 
+interface Modelo130 {
+  incomeCents: string;
+  expenseCents: string;
+  netCents: string;
+  paymentCents: string;
+}
+
 export default function TaxesPage() {
   const organizationId = useOrganizationId();
   const [quarter, setQuarter] = useQuarter();
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [modelo130, setModelo130] = useState<Modelo130 | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +40,12 @@ export default function TaxesPage() {
     setLoading(true);
     setError(null);
     try {
-      setPreview(await api<Preview>(`/organizations/${organizationId}/taxes/preview?from=${from}&to=${to}`));
+      const [model303, model130] = await Promise.all([
+        api<Preview>(`/organizations/${organizationId}/taxes/preview?from=${from}&to=${to}`),
+        api<Modelo130>(`/organizations/${organizationId}/taxes/130?from=${from}&to=${to}`),
+      ]);
+      setPreview(model303);
+      setModelo130(model130);
     } catch (cause) {
       setError(messageOf(cause, "No s'ha pogut carregar la previsualització"));
     } finally {
@@ -52,7 +65,7 @@ export default function TaxesPage() {
     <>
       <PageHeader
         title="Impostos"
-        description="Previsualització del model 303 a partir de les factures emeses i rebudes del trimestre."
+        description="Previsualització dels models 303 i 130 a partir de les factures del trimestre."
         actions={<QuarterPicker value={quarter} onChange={setQuarter} />}
       />
       <p className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
@@ -68,12 +81,32 @@ export default function TaxesPage() {
             <RateCard title="IVA repercutit" description="Factures emeses" rows={preview.issued} />
             <RateCard title="IVA suportat" description="Factures rebudes analitzades" rows={preview.received} />
           </div>
-          <Card>
-            <CardContent className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">{balance < 0n ? "Resultat a compensar" : "Resultat a ingressar"}</p>
-              <p className="text-2xl font-semibold tabular-nums">{euros(balance.toString())}</p>
-            </CardContent>
-          </Card>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Model 303</CardTitle>
+                <CardDescription>Diferència d’IVA del mateix període.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">{balance < 0n ? "Resultat a compensar" : "Resultat a ingressar"}</p>
+                <p className="text-2xl font-semibold tabular-nums">{euros(balance.toString())}</p>
+              </CardContent>
+            </Card>
+            {modelo130 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Model 130</CardTitle>
+                  <CardDescription>Pagament a compte del 20% del rendiment. No és una presentació a l’AEAT.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-4 text-sm">
+                  <Figure label="Ingressos" value={euros(modelo130.incomeCents)} />
+                  <Figure label="Despeses" value={euros(modelo130.expenseCents)} />
+                  <Figure label="Rendiment net" value={euros(modelo130.netCents)} />
+                  <Figure label="A ingressar (20%)" value={euros(modelo130.paymentCents)} />
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
         </>
       ) : null}
     </>
@@ -121,6 +154,15 @@ function RateCard({ title, description, rows }: { title: string; description: st
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function Figure({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-muted-foreground">{label}</p>
+      <p className="text-lg font-semibold tabular-nums">{value}</p>
+    </div>
   );
 }
 

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import { parseExportRange } from "../reports/accountant-export.js";
 import { enumToRate, groupByRate, type TaxPercent } from "../billing/lines.js";
+import { previewModelo130 } from "../billing/modelo-130.js";
 import { cents, findOrganization, readUuid } from "./org-params.js";
 
 export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClient): void {
@@ -96,6 +97,45 @@ export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClie
       to: range.to,
       issued: issued.map(presentBucket),
       received: receivedBuckets.map(presentBucket),
+    });
+  });
+
+  app.get("/organizations/:organizationId/taxes/130", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    const query = request.query as { from?: string; to?: string };
+    const range = parseExportRange(query.from, query.to);
+    if (typeof range === "string") {
+      return reply.code(400).send({ error: range });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const from = new Date(`${range.from}T00:00:00.000Z`);
+    const to = new Date(`${range.to}T00:00:00.000Z`);
+    const [issued, received] = await Promise.all([
+      prisma.issuedInvoice.findMany({
+        where: { organizationId, invoiceDate: { gte: from, lte: to } },
+      }),
+      prisma.invoice.findMany({
+        where: { organizationId, status: InvoiceStatus.PARSED, invoiceDate: { gte: from, lte: to } },
+      }),
+    ]);
+    const income = issued.reduce((total, row) => total + row.totalAmountCents, 0n);
+    const expenses = received.reduce((total, row) => total + (row.totalAmountCents ?? 0n), 0n);
+    const preview = previewModelo130(income, expenses);
+    return reply.send({
+      kind: "modelo-130-preview",
+      disclaimer: "Preview only. This is not an AEAT filing.",
+      from: range.from,
+      to: range.to,
+      incomeCents: cents(preview.incomeCents),
+      expenseCents: cents(preview.expenseCents),
+      netCents: cents(preview.netCents),
+      rate: preview.rate,
+      paymentCents: cents(preview.paymentCents),
     });
   });
 }
