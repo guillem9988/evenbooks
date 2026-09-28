@@ -48,3 +48,13 @@ services:
         value: none
       - key: COOKIE_SECURE
         value: "true"
+      - key: INVOICE_EXTRACTOR
+        value: auto
+      - key: GOOGLE_CLOUD_PROJECT_ID
+        sync: false
+      - key: DOCUMENT_AI_LOCATION
+        value: eu
+      - key: DOCUMENT_AI_PROCESSOR_ID
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false

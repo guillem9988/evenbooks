@@ -196,7 +196,7 @@ function readServiceAccount(raw: string): ServiceAccountCredentials {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON must be the service account key JSON on one line");
+    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_JSON must be the full service account key JSON");
   }
   const account = parsed as Partial<ServiceAccountCredentials> | null;
   if (

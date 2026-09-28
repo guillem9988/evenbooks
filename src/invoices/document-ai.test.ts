@@ -170,7 +170,7 @@ describe("extractor order", () => {
     expect(extractorChain(readExtractorConfig({ ...env, INVOICE_EXTRACTOR: "local" }))).toEqual(["local"]);
     expect(readExtractorConfig(env).documentAi?.location).toBe("eu");
     expect(() => readExtractorConfig({ INVOICE_EXTRACTOR: "documentai" })).toThrow(/GOOGLE_CLOUD_PROJECT_ID/);
-    expect(() => readExtractorConfig({ ...env, GOOGLE_APPLICATION_CREDENTIALS_JSON: "{not json" })).toThrow(/one line/);
+    expect(() => readExtractorConfig({ ...env, GOOGLE_APPLICATION_CREDENTIALS_JSON: "{not json" })).toThrow(/full service account key JSON/);
     expect(() => readExtractorConfig({ INVOICE_EXTRACTOR: "magic" })).toThrow(/INVOICE_EXTRACTOR/);
   });
 });
