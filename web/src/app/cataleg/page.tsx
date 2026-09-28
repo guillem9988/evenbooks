@@ -1,13 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { PackageIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TAX_RATES } from "@/components/line-editor";
 import { useOrganizationId } from "@/components/shell";
-import { EmptyState, ErrorBanner, Field, LoadingRows, NativeSelect, Notice, PageHeader, messageOf } from "@/components/ui-kit";
+import {
+  EmptyState,
+  ErrorBanner,
+  EuroInput,
+  Field,
+  FormDialog,
+  NativeSelect,
+  PageHeader,
+  TableSkeleton,
+  notifyError,
+  notifySuccess,
+  useLoad,
+} from "@/components/ui-kit";
 import { api } from "@/lib/api";
-import { euroInput, euros, parseEuroInput } from "@/lib/money";
+import { euroError, euroInput, euros, parseEuroInput } from "@/lib/money";
 
 interface CatalogItem {
   id: string;
@@ -16,184 +30,220 @@ interface CatalogItem {
   taxRate: number;
 }
 
+interface Draft {
+  id: string | null;
+  name: string;
+  price: string;
+  taxRate: string;
+}
+
 export default function CatalogPage() {
   const organizationId = useOrganizationId();
-  const [items, setItems] = useState<CatalogItem[]>([]);
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [taxRate, setTaxRate] = useState("21");
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draftName, setDraftName] = useState("");
-  const [draftPrice, setDraftPrice] = useState("");
-  const [draftRate, setDraftRate] = useState("21");
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [errors, setErrors] = useState<{ name?: string; price?: string }>({});
+  const [removing, setRemoving] = useState<CatalogItem | null>(null);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const body = await api<{ items: CatalogItem[] }>(`/organizations/${organizationId}/catalog`);
-      setItems(body.items);
-    } catch (cause) {
-      setError(messageOf(cause, "No s’ha pogut carregar el catàleg"));
-    } finally {
-      setLoading(false);
-    }
+    const body = await api<{ items: CatalogItem[] }>(`/organizations/${organizationId}/catalog`);
+    return body.items;
   }, [organizationId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { data, error, initialLoading, reload } = useLoad(load, "No s’ha pogut carregar el catàleg");
+  const items = data ?? [];
+  const visible = query.trim() === "" ? items : items.filter((item) => item.name.toLowerCase().includes(query.trim().toLowerCase()));
 
-  async function createItem(event: React.FormEvent) {
-    event.preventDefault();
-    const unitAmountCents = parseEuroInput(price);
-    if (unitAmountCents === null) {
-      setError("El preu ha de ser en euros, per exemple 3,50.");
-      return;
-    }
+  function openCreate() {
+    setErrors({});
+    setDraft({ id: null, name: "", price: "", taxRate: "21" });
+  }
+
+  function openEdit(item: CatalogItem) {
+    setErrors({});
+    setDraft({ id: item.id, name: item.name, price: euroInput(item.unitAmountCents), taxRate: String(item.taxRate) });
+  }
+
+  async function save() {
+    if (draft === null) return;
+    const next: typeof errors = {};
+    if (draft.name.trim() === "") next.name = "Escriu el nom.";
+    const priceError = euroError(draft.price, { allowZero: true });
+    if (priceError) next.price = priceError;
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
     setBusy(true);
-    setError(null);
     try {
-      await api(`/organizations/${organizationId}/catalog`, {
-        method: "POST",
-        body: JSON.stringify({ name, unitAmountCents, taxRate: Number(taxRate) }),
-      });
-      setNotice(`${name} afegit al catàleg.`);
-      setName("");
-      setPrice("");
-      setTaxRate("21");
-      await load();
+      const body = JSON.stringify({ name: draft.name.trim(), unitAmountCents: parseEuroInput(draft.price), taxRate: Number(draft.taxRate) });
+      if (draft.id === null) {
+        await api(`/organizations/${organizationId}/catalog`, { method: "POST", body });
+        notifySuccess(`${draft.name.trim()} afegit al catàleg.`);
+      } else {
+        await api(`/organizations/${organizationId}/catalog/${draft.id}`, { method: "PATCH", body });
+        notifySuccess(`${draft.name.trim()} actualitzat.`);
+      }
+      setDraft(null);
+      await reload();
     } catch (cause) {
-      setError(messageOf(cause, "No s’ha pogut crear el producte"));
+      notifyError(cause, "No s’ha pogut desar el producte");
     } finally {
       setBusy(false);
     }
   }
 
-  function startEdit(item: CatalogItem) {
-    setEditing(item.id);
-    setDraftName(item.name);
-    setDraftPrice(euroInput(item.unitAmountCents));
-    setDraftRate(String(item.taxRate));
-  }
-
-  async function saveEdit(id: string) {
-    const unitAmountCents = parseEuroInput(draftPrice);
-    if (unitAmountCents === null) {
-      setError("El preu ha de ser en euros, per exemple 3,50.");
-      return;
-    }
+  async function remove() {
+    if (removing === null) return;
     setBusy(true);
-    setError(null);
     try {
-      await api(`/organizations/${organizationId}/catalog/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: draftName, unitAmountCents, taxRate: Number(draftRate) }),
-      });
-      setEditing(null);
-      setNotice("Producte actualitzat.");
-      await load();
+      await api(`/organizations/${organizationId}/catalog/${removing.id}`, { method: "DELETE" });
+      notifySuccess(`${removing.name} eliminat del catàleg.`);
+      setRemoving(null);
+      await reload();
     } catch (cause) {
-      setError(messageOf(cause, "No s’ha pogut actualitzar el producte"));
+      notifyError(cause, "No s’ha pogut eliminar el producte");
     } finally {
       setBusy(false);
     }
   }
 
-  async function remove(item: CatalogItem) {
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/organizations/${organizationId}/catalog/${item.id}`, { method: "DELETE" });
-      setNotice(`${item.name} eliminat.`);
-      await load();
-    } catch (cause) {
-      setError(messageOf(cause, "No s’ha pogut eliminar el producte"));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const rowActions = (item: CatalogItem) => (
+    <div className="flex justify-end gap-1">
+      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Edita ${item.name}`} onClick={() => openEdit(item)}>
+        <PencilIcon />
+      </Button>
+      <Button type="button" size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Elimina ${item.name}`} onClick={() => setRemoving(item)}>
+        <Trash2Icon />
+      </Button>
+    </div>
+  );
 
   return (
     <>
-      <PageHeader title="Catàleg" description="Productes i serveis amb el preu i l’IVA, per omplir les factures." />
-      <ErrorBanner message={error} onRetry={load} />
-      <Notice message={notice} />
-      <Card>
-        <CardHeader>
-          <CardTitle>Nou producte o servei</CardTitle>
-          <CardDescription>Escriu el preu en euros, per exemple 3,5 o 3,50.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={createItem}>
-            <Field id="catalog-name" label="Nom">
-              <Input id="catalog-name" value={name} onChange={(event) => setName(event.target.value)} required />
+      <PageHeader
+        title="Catàleg"
+        description="Productes i serveis amb el preu i l’IVA, per omplir factures i sèries més de pressa."
+        actions={
+          <Button onClick={openCreate} disabled={initialLoading}>
+            <PlusIcon /> Nou producte
+          </Button>
+        }
+      />
+      <ErrorBanner message={error} onRetry={reload} />
+
+      {initialLoading ? (
+        <TableSkeleton columns={4} />
+      ) : data ? (
+        items.length === 0 ? (
+          <EmptyState
+            icon={PackageIcon}
+            title="Encara no hi ha productes ni serveis"
+            hint="Afegeix el que factures sovint, com una hora de consultoria o una quota mensual."
+            action={
+              <Button onClick={openCreate}>
+                <PlusIcon /> Nou producte
+              </Button>
+            }
+          />
+        ) : (
+          <section aria-label="Productes i serveis" className="flex flex-col gap-3">
+            <div className="relative max-w-sm">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <Input aria-label="Cerca al catàleg" placeholder="Cerca per nom" className="pl-8" value={query} onChange={(event) => setQuery(event.target.value)} />
+            </div>
+            {visible.length === 0 ? (
+              <EmptyState title="Cap producte coincideix amb la cerca" />
+            ) : (
+              <>
+                <div className="hidden overflow-hidden rounded-xl border md:block">
+                  <Table>
+                    <TableHeader className="bg-muted/40">
+                      <TableRow>
+                        <TableHead>Nom</TableHead>
+                        <TableHead className="text-right">Preu</TableHead>
+                        <TableHead className="text-right">IVA</TableHead>
+                        <TableHead className="text-right">Preu amb IVA</TableHead>
+                        <TableHead className="text-right">
+                          <span className="sr-only">Accions</span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visible.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell className="text-right tabular-nums">{euros(item.unitAmountCents)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{item.taxRate}%</TableCell>
+                          <TableCell className="text-right tabular-nums">{euros(withTax(item))}</TableCell>
+                          <TableCell className="text-right">{rowActions(item)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <ul className="flex flex-col gap-2 md:hidden">
+                  {visible.map((item) => (
+                    <li key={item.id} className="flex items-center justify-between gap-3 rounded-xl border p-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{item.name}</p>
+                        <p className="text-sm text-muted-foreground tabular-nums">
+                          {euros(item.unitAmountCents)} · IVA {item.taxRate}%
+                        </p>
+                      </div>
+                      {rowActions(item)}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )
+      ) : null}
+
+      <FormDialog
+        open={draft !== null}
+        onOpenChange={(open) => !open && setDraft(null)}
+        title={draft?.id ? "Edita el producte" : "Nou producte o servei"}
+        description="Escriu el preu sense IVA, per exemple 3,5 o 3,50."
+        submitLabel={draft?.id ? "Desa els canvis" : "Afegeix al catàleg"}
+        busy={busy}
+        onSubmit={save}
+      >
+        {draft ? (
+          <div className="grid gap-3 sm:grid-cols-[1fr_9rem_6rem]">
+            <Field id="catalog-name" label="Nom" error={errors.name}>
+              <Input id="catalog-name" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} autoFocus />
             </Field>
-            <Field id="catalog-price" label="Preu">
-              <Input id="catalog-price" inputMode="decimal" placeholder="3,50" value={price} onChange={(event) => setPrice(event.target.value)} required />
+            <Field id="catalog-price" label="Preu" error={errors.price}>
+              <EuroInput id="catalog-price" value={draft.price} onChange={(price) => setDraft({ ...draft, price })} />
             </Field>
             <Field id="catalog-rate" label="IVA">
-              <NativeSelect id="catalog-rate" value={taxRate} onChange={(event) => setTaxRate(event.target.value)}>
-                <option value="21">21%</option>
-                <option value="10">10%</option>
-                <option value="4">4%</option>
-                <option value="0">0%</option>
+              <NativeSelect id="catalog-rate" value={draft.taxRate} onChange={(event) => setDraft({ ...draft, taxRate: event.target.value })}>
+                {TAX_RATES.map((rate) => (
+                  <option key={rate} value={rate}>
+                    {rate}%
+                  </option>
+                ))}
               </NativeSelect>
             </Field>
-            <Button type="submit" className="self-end" disabled={busy}>
-              {busy ? "Desant…" : "Afegeix"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Llista</h2>
-        {loading ? (
-          <LoadingRows />
-        ) : items.length === 0 ? (
-          <EmptyState title="Encara no hi ha productes ni serveis" hint="Afegeix el primer amb el formulari de dalt." />
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {items.map((item) => (
-              <li key={item.id} className="rounded-lg border p-3">
-                {editing === item.id ? (
-                  <div className="grid gap-2 sm:grid-cols-[1fr_8rem_6rem_auto] sm:items-end">
-                    <Input value={draftName} onChange={(event) => setDraftName(event.target.value)} aria-label="Nom" required />
-                    <Input value={draftPrice} onChange={(event) => setDraftPrice(event.target.value)} aria-label="Preu" inputMode="decimal" required />
-                    <NativeSelect value={draftRate} onChange={(event) => setDraftRate(event.target.value)} aria-label="IVA">
-                      <option value="21">21%</option>
-                      <option value="10">10%</option>
-                      <option value="4">4%</option>
-                      <option value="0">0%</option>
-                    </NativeSelect>
-                    <div className="flex gap-2">
-                      <Button type="button" size="sm" disabled={busy} onClick={() => saveEdit(item.id)}>Desa</Button>
-                      <Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)}>Cancel·la</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-sm text-muted-foreground tabular-nums">
-                        {euros(item.unitAmountCents)} · IVA {item.taxRate}%
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="button" size="sm" variant="outline" onClick={() => startEdit(item)}>Edita</Button>
-                      <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => remove(item)}>Elimina</Button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          </div>
+        ) : null}
+      </FormDialog>
+
+      <FormDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title={`Vols eliminar ${removing?.name ?? ""}?`}
+        description="Desapareixerà del catàleg. Les factures que ja el fan servir no canvien."
+        submitLabel="Elimina"
+        busy={busy}
+        destructive
+        onSubmit={remove}
+      />
     </>
   );
+}
+
+function withTax(item: CatalogItem): string {
+  const base = BigInt(item.unitAmountCents);
+  return (base + (base * BigInt(item.taxRate) + 50n) / 100n).toString();
 }
