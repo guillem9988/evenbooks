@@ -14,7 +14,7 @@ interface OrganizationState {
   organizationName: string;
   displayName: string;
   select: (id: string, name: string) => void;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<boolean>;
   clear: () => void;
 }
 
@@ -33,10 +33,12 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       setDisplayName(session.displayName);
       setOrganizationId(organization?.id ?? "");
       setOrganizationName(organization?.legalName ?? "");
+      return true;
     } catch {
       setDisplayName("");
       setOrganizationId("");
       setOrganizationName("");
+      return false;
     } finally {
       setReady(true);
     }

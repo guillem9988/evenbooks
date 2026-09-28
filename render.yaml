@@ -48,6 +48,8 @@ services:
         value: none
       - key: COOKIE_SECURE
         value: "true"
+      - key: ALLOW_PUBLIC_REGISTRATION
+        value: "false"
       - key: INVOICE_EXTRACTOR
         value: auto
       - key: GOOGLE_CLOUD_PROJECT_ID

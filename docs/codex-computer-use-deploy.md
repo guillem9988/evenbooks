@@ -210,8 +210,8 @@ No creïs un projecte, no generis una contrasenya nova i no facis **Reset databa
    - **Root Directory**: **Clica** **Edit** → tria la carpeta **`web`** → **Continue**.
    - **Build and Output Settings**: no toquis res.
    - No triïs regió: Vercel es queda **global**.
-   - **Environment Variables**: **Key** `NEXT_PUBLIC_API_URL`, **Value** = la URL API Render del pas 4.2 (sense barra final) → **Add**.
-     Aquest valor **no** és secret i és l’únic que va a Vercel. Cap secret de Supabase, Upstash ni OpenAI va a Vercel.
+   - **Environment Variables**: **Key** `API_PROXY_URL`, **Value** = la URL API Render del pas 4.2 (sense barra final) → **Add**.
+     **No** afegeixis `NEXT_PUBLIC_API_URL` (galetes cross-site; l’Entra pot semblar que no fa res). Cap secret de Supabase, Upstash ni OpenAI va a Vercel.
 7. **Clica** **Deploy**.
 8. **Comprova**: la pantalla mostra *Congratulations* / confeti i una vista prèvia del panell. **Clica** **Continue to Dashboard** i anota el domini de **Production** (per exemple `https://matchinvoice.vercel.app` o `https://matchinvoice-<sufix>.vercel.app`). És el **Domini Vercel**.
 
@@ -219,7 +219,7 @@ No creïs un projecte, no generis una contrasenya nova i no facis **Reset databa
 
 - *Build: `Couldn't find any pages or app directory`*: el **Root Directory** no és `web`. **Settings** → **Build and Deployment** → **Root Directory** = `web` → **Save** → **Deployments** → **Redeploy**.
 - *Build falla amb errors de TypeScript*: ATURA’T i copia l’error a l’informe (el repositori hauria de compilar; és un problema de codi).
-- *Has oblidat `NEXT_PUBLIC_API_URL`*: **Settings** → **Environment Variables** → afegeix-la per a **Production** → **Deployments** → menú **⋯** del darrer deploy → **Redeploy**. Cal redeploy perquè s’incrusta en compilar.
+- *Has oblidat `API_PROXY_URL`*: **Settings** → **Environment Variables** → afegeix-la per a **Production** → **Deployments** → menú **⋯** del darrer deploy → **Redeploy**.
 
 ---
 
@@ -237,28 +237,18 @@ No creïs un projecte, no generis una contrasenya nova i no facis **Reset databa
 ## Pas 7 — Verificació final
 
 1. **Obre** `<URL API Render>/health`. **Comprova** `"status":"ok"` i `postgres`, `redis`, `minio` a `"up"`. Si triga, espera 60 segons i recarrega (Render desperta el servei).
-2. **Obre** el **Domini Vercel**. **Comprova** que surt la pantalla **Entra al teu compte** amb el logotip **MI** i el text **MatchInvoice**.
-3. **Clica** la pestanya **Registra’t**. **Escriu**:
-   - **El teu nom**: `Prova Deploy`
-   - **Correu**: `prova+deploy@example.com` (o el que indiqui l’usuari)
-   - **Contrasenya**: genera’n una de 16 caràcters aleatoris; no la mostris a l’informe (escriu `[contrasenya de prova, no desada]`).
-   - **Raó social**: `Prova Deploy SL`
-   - **NIF / CIF**: `B00000000`
-4. **Clica** **Crea el compte**. **Comprova**: apareix el toast **Compte creat. Benvingut a MatchInvoice.** i la pàgina **Inici** amb les targetes **Ingressos**, **Despeses**, **Benefici** i **Què cal fer**.
-5. **Recarrega** la pàgina (F5 / Cmd+R). **Comprova** que continues a **Inici** (la galeta de sessió funciona).
-6. A baix de la barra lateral, **Clica** la icona **Tanca la sessió**. **Comprova** que tornes a **Entra al teu compte**.
-7. **Escriu** el mateix correu i contrasenya → **Clica** **Entra**. **Comprova** que tornes a **Inici**.
-8. *(Opcional)* Obre **Contactes** → **Nou contacte** → crea un client de prova. **Comprova** el toast verd.
+2. **Obre** el **Domini Vercel**. **Comprova** que surt la pantalla **Entra al teu compte** amb el logotip **MI** i el text **MatchInvoice**. El registre públic ha d’estar tancat (sense pestanya **Registra’t**), tret que hi hagi invitació.
+3. Si ja hi ha un compte: **Escriu** el correu i la contrasenya → **Clica** **Entra**. **Comprova** que arribes a **Inici**. A la xarxa del navegador, les crides han d’anar a `/backend/*` (mateix origen), no a `onrender.com`.
+4. **Recarrega** la pàgina (F5 / Cmd+R). **Comprova** que continues a **Inici** (la galeta de sessió funciona).
+5. A baix de la barra lateral, **Clica** la icona **Tanca la sessió**. **Comprova** que tornes a **Entra al teu compte**.
+6. Torna a entrar. **Comprova** que tornes a **Inici**.
+7. *(Opcional)* Obre **Contactes** → **Nou contacte** → crea un client de prova. **Comprova** el toast verd.
 
 ### Si falla (verificació)
 
-- *Toast «No hi ha connexió amb el servidor»*: el servei de Render dormia o `NEXT_PUBLIC_API_URL` és incorrecta. Espera 60 s i torna-ho a provar. Si continua, revisa el pas 5.6.
-- *Error de CORS a la consola del navegador*: `WEB_ORIGIN` a Render no coincideix exactament amb el Domini Vercel (pas 6).
-- *El registre funciona però en recarregar tornes al login* (típic de Safari, o de Chrome amb galetes de tercers bloquejades): activa el mode proxy:
-  1. Vercel → **Settings** → **Environment Variables**: esborra `NEXT_PUBLIC_API_URL` i afegeix `API_PROXY_URL` = URL API Render.
-  2. **Deployments** → **⋯** → **Redeploy**.
-  3. Torna a fer els passos 7.2–7.7.
-- *«Aquest correu ja té un compte»*: el registre ja s’havia fet; ves directament al pas 7.7.
+- *Toast «No hi ha connexió amb el servidor»*: el servei de Render dormia o `API_PROXY_URL` és incorrecta. Espera 60 s i torna-ho a provar. Si continua, revisa el pas 5.6.
+- *Error de CORS a la consola del navegador*: només en mode cross-site; amb `API_PROXY_URL` no hauria de passar. Si encara hi ha `NEXT_PUBLIC_API_URL`, esborra-la i redesplega.
+- *L’Entra sembla que no fa res / en recarregar tornes al login*: galetes de tercers. Assegura `API_PROXY_URL` sense `NEXT_PUBLIC_API_URL` i **Redeploy**.
 
 ---
 

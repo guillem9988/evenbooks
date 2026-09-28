@@ -1,6 +1,11 @@
+import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client.js";
-import type { CookieConfig } from "../config.js";
+import {
+  registrationStatus,
+  type CookieConfig,
+  type RegistrationConfig,
+} from "../config.js";
 import {
   checkPassword,
   hashPassword,
@@ -13,15 +18,44 @@ import {
   userIdFromRequest,
 } from "../auth/session.js";
 
-export function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient, cookie: CookieConfig = LOCAL_COOKIE): void {
+function inviteMatches(expected: string, provided: unknown): boolean {
+  if (typeof provided !== "string") {
+    return false;
+  }
+  const left = Buffer.from(expected);
+  const right = Buffer.from(provided);
+  if (left.length !== right.length) {
+    return false;
+  }
+  return timingSafeEqual(left, right);
+}
+
+export function registerAuthRoutes(
+  app: FastifyInstance,
+  prisma: PrismaClient,
+  cookie: CookieConfig = LOCAL_COOKIE,
+  registration: RegistrationConfig = { allowPublic: true, inviteCode: null },
+): void {
+  app.get("/auth/registration", async (_request, reply) => {
+    return reply.send(registrationStatus(registration));
+  });
+
   app.post("/auth/register", async (request, reply) => {
+    const status = registrationStatus(registration);
+    if (!status.open) {
+      return reply.code(403).send({ error: "Registration is disabled" });
+    }
     const body = request.body as {
       email?: unknown;
       password?: unknown;
       displayName?: unknown;
       legalName?: unknown;
       taxId?: unknown;
+      inviteCode?: unknown;
     };
+    if (status.inviteRequired && !inviteMatches(registration.inviteCode!, body.inviteCode)) {
+      return reply.code(403).send({ error: "Invalid invite code" });
+    }
     const email = readEmail(body?.email);
     const password = readPassword(body?.password);
     if (email instanceof Error) {

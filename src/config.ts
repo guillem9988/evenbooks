@@ -51,6 +51,11 @@ export interface ExtractorConfig {
   documentAi: DocumentAiConfig | null;
 }
 
+export interface RegistrationConfig {
+  allowPublic: boolean;
+  inviteCode: string | null;
+}
+
 export interface AppConfig {
   nodeEnv: string;
   host: string;
@@ -63,6 +68,7 @@ export interface AppConfig {
   extractor: ExtractorConfig;
   webOrigins: string[];
   cookie: CookieConfig;
+  registration: RegistrationConfig;
   trustProxy: boolean;
   worker: WorkerConfig;
 }
@@ -191,6 +197,28 @@ export function readCookieConfig(env: Env, production: boolean): CookieConfig {
   return { sameSite, secure, domain: optionalString(env, "COOKIE_DOMAIN") };
 }
 
+/** Public sign-up is on in development; off in production unless ALLOW_PUBLIC_REGISTRATION=true. */
+export function readRegistrationConfig(env: Env, production: boolean): RegistrationConfig {
+  return {
+    allowPublic: readBoolean(env, "ALLOW_PUBLIC_REGISTRATION", !production),
+    inviteCode: optionalString(env, "REGISTRATION_INVITE_CODE"),
+  };
+}
+
+/**
+ * Open registration, or invite-only when public sign-up is off and REGISTRATION_INVITE_CODE is set.
+ * Never returns the invite code itself.
+ */
+export function registrationStatus(registration: RegistrationConfig): { open: boolean; inviteRequired: boolean } {
+  if (registration.allowPublic) {
+    return { open: true, inviteRequired: false };
+  }
+  if (registration.inviteCode !== null) {
+    return { open: true, inviteRequired: true };
+  }
+  return { open: false, inviteRequired: false };
+}
+
 function readServiceAccount(raw: string): ServiceAccountCredentials {
   let parsed: unknown;
   try {
@@ -271,6 +299,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
     extractor: readExtractorConfig(env),
     webOrigins: readWebOrigins(optionalString(env, "WEB_ORIGIN"), production),
     cookie: readCookieConfig(env, production),
+    registration: readRegistrationConfig(env, production),
     trustProxy: readBoolean(env, "TRUST_PROXY", production),
     worker: {
       drainDelaySeconds: readInteger(env, "BULLMQ_DRAIN_DELAY_SECONDS", 5, 1, 3600),

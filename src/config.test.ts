@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig, readWebOrigins, resolveDatabaseSsl } from "./config.js";
+import { loadConfig, readWebOrigins, registrationStatus, resolveDatabaseSsl } from "./config.js";
 import { sessionCookieAttributes } from "./auth/session.js";
 import { poolConfig } from "./lib/prisma.js";
 import { bullmqConnection } from "./lib/queue.js";
@@ -22,6 +22,7 @@ describe("loadConfig", () => {
     expect(config.s3.endpoint).toBe("http://localhost:59000");
     expect(config.s3.forcePathStyle).toBe(true);
     expect(config.trustProxy).toBe(false);
+    expect(config.registration).toEqual({ allowPublic: true, inviteCode: null });
   });
 
   it("uses cross-site secure cookies, TLS, and only the web origin in production", () => {
@@ -30,6 +31,7 @@ describe("loadConfig", () => {
     expect(config.webOrigins).toEqual(["https://matchinvoice.vercel.app"]);
     expect(config.database.ssl).toBe("no-verify");
     expect(config.trustProxy).toBe(true);
+    expect(config.registration).toEqual({ allowPublic: false, inviteCode: null });
   });
 
   it("refuses to boot in production without WEB_ORIGIN", () => {
@@ -44,6 +46,24 @@ describe("loadConfig", () => {
     const config = loadConfig({ ...PRODUCTION, DATABASE_CA_CERT: "-----BEGIN CERTIFICATE-----\\nabc\\n-----END CERTIFICATE-----" });
     expect(config.database.ssl).toBe("verify");
     expect(config.database.caCert).toContain("\nabc\n");
+  });
+
+  it("keeps registration invite-only when public sign-up is off and an invite is set", () => {
+    const config = loadConfig({
+      ...PRODUCTION,
+      ALLOW_PUBLIC_REGISTRATION: "false",
+      REGISTRATION_INVITE_CODE: "invite-secret",
+    });
+    expect(config.registration).toEqual({ allowPublic: false, inviteCode: "invite-secret" });
+    expect(registrationStatus(config.registration)).toEqual({ open: true, inviteRequired: true });
+  });
+});
+
+describe("registrationStatus", () => {
+  it("closes sign-up unless public or invite is configured", () => {
+    expect(registrationStatus({ allowPublic: true, inviteCode: null })).toEqual({ open: true, inviteRequired: false });
+    expect(registrationStatus({ allowPublic: false, inviteCode: "x" })).toEqual({ open: true, inviteRequired: true });
+    expect(registrationStatus({ allowPublic: false, inviteCode: null })).toEqual({ open: false, inviteRequired: false });
   });
 });
 

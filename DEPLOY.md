@@ -156,8 +156,9 @@ Comprova-la: obre `https://matchinvoice-api.onrender.com/health`. Ha de dir `"st
 2. **Project Name**: `matchinvoice`. No cal triar regió: Vercel es queda **global**.
 3. **Framework Preset**: Next.js.
 4. **Root Directory**: **Edit** → tria `web` → **Continue**.
-5. **Environment Variables**:
-   - `NEXT_PUBLIC_API_URL` = la URL de Render del pas 4.3, sense barra final.
+5. **Environment Variables** (mode proxy, recomanat — mateixa-origen i galetes de primera part):
+   - `API_PROXY_URL` = la URL de Render del pas 4.3, sense barra final.
+   - **No** posis `NEXT_PUBLIC_API_URL` (o deixa-la buida). Si existeix, esborra-la: amb ella el navegador crida Render en cross-site i Safari / molts navegadors bloquegen la galeta de sessió (l’**Entra** sembla que no fa res).
 6. **Deploy**. En acabar, copia el domini de producció (per exemple `https://matchinvoice.vercel.app`; si el nom estava agafat, serà `https://matchinvoice-xxxx.vercel.app`).
 
 ---
@@ -175,10 +176,10 @@ L’API només accepta peticions amb galetes des d’aquest origen (CORS). Les p
 ## 7. Verificació final
 
 1. `https://<render>/health` → `"status":"ok"`, i `postgres`, `redis`, `minio` a `"up"`.
-2. Obre el domini de Vercel. Ha d’aparèixer la pantalla **Entra al teu compte**.
-3. **Registra’t** → omple nom, correu de prova, contrasenya (8+ caràcters), raó social i NIF → **Crea el compte**. Has d’arribar a **Inici**.
+2. Obre el domini de Vercel. Ha d’aparèixer la pantalla **Entra al teu compte**. El registre públic està **tancat** en producció (`ALLOW_PUBLIC_REGISTRATION=false`) tret que hi hagi `REGISTRATION_INVITE_CODE`.
+3. Si ja tens compte: **Entra** amb correu i contrasenya. Has d’arribar a **Inici**. Les peticions han d’anar a `/backend/*` al mateix domini (no a `onrender.com` des del navegador).
 4. Tanca la sessió (icona de sortida a baix de la barra lateral) i torna a entrar amb el mateix correu i contrasenya.
-5. Recarrega la pàgina: has de continuar dins. Això confirma que la galeta de sessió funciona entre Vercel i Render.
+5. Recarrega la pàgina: has de continuar dins. Això confirma que la galeta de sessió (primera part via proxy) funciona.
 6. *(Opcional)* Puja un PDF a **Despeses** i comprova que passa a **Analitzada**.
 
 ---
@@ -199,13 +200,13 @@ L’API només accepta peticions amb galetes des d’aquest origen (CORS). Les p
 
 **`/health` mostra `minio: down`.** Revisa `S3_ENDPOINT` (ha d’acabar en `/storage/v1/s3`), `S3_REGION`, que el bucket `matchinvoice` existeix i que les claus S3 són les del mateix projecte. `SignatureDoesNotMatch` gairebé sempre és la regió.
 
-**Vercel: el registre diu «No hi ha connexió amb el servidor».** `NEXT_PUBLIC_API_URL` és incorrecta, té barra final, o Render està dormint (espera un minut i torna-ho a provar). Després de canviar la variable cal **Redeploy** a Vercel, perquè s’incrusta en compilar.
+**Vercel: el registre / l’entrada diu «No hi ha connexió amb el servidor».** `API_PROXY_URL` (o `NEXT_PUBLIC_API_URL` si encara el fas servir) és incorrecta, té barra final, o Render està dormint (espera un minut i torna-ho a provar). Després de canviar `NEXT_PUBLIC_*` cal **Redeploy** a Vercel, perquè s’incrusta en compilar. `API_PROXY_URL` també es llegeix en build (rewrites de Next).
 
-**El navegador mostra un error de CORS.** `WEB_ORIGIN` a Render no coincideix exactament amb el domini de Vercel.
+**El navegador mostra un error de CORS.** Només passa en mode cross-site (`NEXT_PUBLIC_API_URL`). `WEB_ORIGIN` a Render no coincideix exactament amb el domini de Vercel. Amb `API_PROXY_URL` el navegador no fa CORS cap a Render.
 
-**Entres però en recarregar tornes a la pantalla d’inici de sessió (sobretot Safari o iPhone).** Safari bloqueja galetes de tercers. Canvia al mode proxy:
-1. Vercel → **Settings → Environment Variables**: esborra `NEXT_PUBLIC_API_URL` i afegeix `API_PROXY_URL` = la URL de Render.
-2. **Deployments** → **Redeploy**.
+**L’Entra sembla que no fa res, o entres i en recarregar tornes al login (Safari / iPhone).** Galetes de tercers bloquejades. Assegura el mode proxy:
+1. Vercel → **Settings → Environment Variables**: esborra `NEXT_PUBLIC_API_URL` i afegeix (o mantén) `API_PROXY_URL` = la URL de Render.
+2. **Deployments** → **Redeploy** (cal rebuild perquè el bundle deixi d’apuntar a `onrender.com`).
 El panell cridarà `/backend/*` al seu propi domini i Vercel ho reenviarà a Render; la galeta passa a ser del domini de Vercel.
 
 **Supabase: el projecte està pausat.** Obre’l al panell i prem **Restore project**.
@@ -240,6 +241,8 @@ El panell cridarà `/backend/*` al seu propi domini i Vercel ho reenviarà a Ren
 | `COOKIE_SECURE` | No | `true` en producció |
 | `COOKIE_DOMAIN` | No | Buit |
 | `TRUST_PROXY` | No | `true` en producció |
+| `ALLOW_PUBLIC_REGISTRATION` | No | `false` en producció (defecte). `true` reobre el registre públic |
+| `REGISTRATION_INVITE_CODE` | No | Si hi és i el registre públic és off, el registre demana aquest codi |
 | `OPENAI_API_KEY` | No | Clau d’OpenAI |
 | `INVOICE_EXTRACTOR` | No | `auto` (per defecte), `documentai`, `openai` o `local` |
 | `GOOGLE_CLOUD_PROJECT_ID` | No | Project ID de Google Cloud |
@@ -251,7 +254,7 @@ El panell cridarà `/backend/*` al seu propi domini i Vercel ho reenviarà a Ren
 
 | Variable | Obligatòria | Valor |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Sí (mode A) | URL de Render |
-| `API_PROXY_URL` | Només mode B | URL de Render, amb `NEXT_PUBLIC_API_URL` buida |
+| `API_PROXY_URL` | Recomanat | URL de Render; el panell usa `/backend/*` (galeta de primera part) |
+| `NEXT_PUBLIC_API_URL` | No (evitar) | URL de Render en cross-site; no la combinis amb `API_PROXY_URL` |
 
 En local no cal res d’això: `docker compose up -d`, `npm run dev` a l’arrel i `npm run dev` a `web/` fan servir MinIO, Redis i Postgres locals.

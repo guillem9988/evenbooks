@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useOrganization } from "@/components/organization";
 import { EMAIL, ErrorBanner, Field, Segmented, messageOf, notifySuccess } from "@/components/ui-kit";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 
 type Mode = "login" | "register";
-type Errors = Partial<Record<"email" | "password" | "displayName" | "legalName" | "taxId", string>>;
+type Errors = Partial<Record<"email" | "password" | "displayName" | "legalName" | "taxId" | "inviteCode", string>>;
+type RegistrationInfo = { open: boolean; inviteRequired: boolean };
 
 const POINTS = [
   "Factures, pressupostos i sèries recurrents amb PDF",
@@ -22,14 +23,37 @@ const POINTS = [
 export function AuthScreen() {
   const { refresh } = useOrganization();
   const [mode, setMode] = useState<Mode>("login");
+  const [registration, setRegistration] = useState<RegistrationInfo | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [taxId, setTaxId] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api<RegistrationInfo>("/auth/registration")
+      .then((info) => {
+        if (!cancelled) setRegistration(info);
+      })
+      .catch(() => {
+        // Keep login available even if the status endpoint is unreachable.
+        if (!cancelled) setRegistration({ open: false, inviteRequired: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (registration !== null && !registration.open && mode === "register") {
+      setMode("login");
+    }
+  }, [registration, mode]);
 
   function validate(): Errors {
     const next: Errors = {};
@@ -39,6 +63,7 @@ export function AuthScreen() {
       if (displayName.trim() === "") next.displayName = "Escriu el teu nom.";
       if (legalName.trim() === "") next.legalName = "Escriu la raó social.";
       if (taxId.trim() === "") next.taxId = "Escriu el NIF o CIF.";
+      if (registration?.inviteRequired && inviteCode.trim() === "") next.inviteCode = "Cal un codi d’invitació.";
     }
     return next;
   }
@@ -56,17 +81,39 @@ export function AuthScreen() {
       } else {
         await api("/auth/register", {
           method: "POST",
-          body: JSON.stringify({ email: email.trim(), password, displayName: displayName.trim(), legalName: legalName.trim(), taxId: taxId.trim() }),
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+            displayName: displayName.trim(),
+            legalName: legalName.trim(),
+            taxId: taxId.trim(),
+            ...(registration?.inviteRequired ? { inviteCode: inviteCode.trim() } : {}),
+          }),
         });
         notifySuccess("Compte creat. Benvingut a MatchInvoice.");
       }
-      await refresh();
+      // Login/register set the session cookie; if the browser dropped it (cross-site), refresh leaves us logged out with no error.
+      const signedIn = await refresh();
+      if (!signedIn) {
+        throw new ApiError(
+          "S’ha autenticat el servidor, però el navegador no ha desat la sessió. Prova un altre navegador o contacta amb el suport.",
+          0,
+        );
+      }
     } catch (cause) {
       setError(messageOf(cause, mode === "login" ? "No s’ha pogut entrar" : "No s’ha pogut crear el compte"));
     } finally {
       setBusy(false);
     }
   }
+
+  const registerOpen = registration?.open === true;
+  const modeOptions: Array<readonly [Mode, string]> = registerOpen
+    ? [
+        ["login", "Entra"],
+        ["register", "Registra’t"],
+      ]
+    : [["login", "Entra"]];
 
   return (
     <main id="contingut" className="grid min-h-dvh flex-1 lg:grid-cols-2">
@@ -97,23 +144,26 @@ export function AuthScreen() {
             </div>
             <CardTitle className="text-xl">{mode === "login" ? "Entra al teu compte" : "Crea el compte"}</CardTitle>
             <CardDescription>
-              {mode === "login" ? "Fes servir el correu i la contrasenya del registre." : "El registre crea el teu usuari i la primera organització."}
+              {mode === "login"
+                ? "Fes servir el correu i la contrasenya del registre."
+                : registration?.inviteRequired
+                  ? "Cal un codi d’invitació per crear un compte nou."
+                  : "El registre crea el teu usuari i la primera organització."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
-            <Segmented
-              label="Accés"
-              value={mode}
-              onChange={(next) => {
-                setMode(next);
-                setErrors({});
-                setError(null);
-              }}
-              options={[
-                ["login", "Entra"],
-                ["register", "Registra’t"],
-              ]}
-            />
+            {registerOpen ? (
+              <Segmented
+                label="Accés"
+                value={mode}
+                onChange={(nextMode) => {
+                  setMode(nextMode);
+                  setErrors({});
+                  setError(null);
+                }}
+                options={modeOptions}
+              />
+            ) : null}
             <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
               {mode === "register" ? (
                 <Field id="auth-name" label="El teu nom" error={errors.displayName}>
@@ -141,6 +191,16 @@ export function AuthScreen() {
                     <Input id="org-tax" value={taxId} onChange={(event) => setTaxId(event.target.value.toUpperCase())} placeholder="B12345678" />
                   </Field>
                 </div>
+              ) : null}
+              {mode === "register" && registration?.inviteRequired ? (
+                <Field id="auth-invite" label="Codi d’invitació" error={errors.inviteCode}>
+                  <Input
+                    id="auth-invite"
+                    autoComplete="off"
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value)}
+                  />
+                </Field>
               ) : null}
               <ErrorBanner message={error} />
               <Button type="submit" size="lg" disabled={busy}>
