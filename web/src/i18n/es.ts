@@ -7,6 +7,7 @@ export const es: Dict = {
     retry: "Prueba otra vez",
     loading: "Cargando",
     loadingSession: "Cargando la sesión",
+    wakingServer: "Despertando el servidor… En el plan gratuito de Render el primer acceso puede tardar unos 30–50 segundos.",
     actions: "Acciones",
     organization: "Organización",
     skipToContent: "Saltar al contenido",

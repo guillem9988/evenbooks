@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BanknoteIcon,
   FileTextIcon,
@@ -97,22 +97,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const t = useT();
 
   if (!ready) {
-    return (
-      <div className="flex min-h-dvh flex-1 flex-col md:flex-row" aria-busy="true" aria-label={t("common.loadingSession")}>
-        <div className="hidden w-64 shrink-0 border-r bg-sidebar p-4 md:block">
-          <Skeleton className="h-8 w-40" />
-          <div className="mt-8 flex flex-col gap-2">
-            {Array.from({ length: 9 }, (_, index) => (
-              <Skeleton key={index} className="h-8 w-full" />
-            ))}
-          </div>
-        </div>
-        <div className="flex-1 p-6 lg:p-10">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="mt-6 h-32 w-full" />
-        </div>
-      </div>
-    );
+    return <LoadingSession />;
   }
 
   if (!organizationId) {
@@ -132,6 +117,42 @@ function Frame({ children }: { children: React.ReactNode }) {
       <main id="contingut" tabIndex={-1} className="flex-1 px-4 py-6 outline-none sm:px-6 lg:px-10 lg:py-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">{children}</div>
       </main>
+    </div>
+  );
+}
+
+function LoadingSession() {
+  const t = useT();
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="flex min-h-dvh flex-1 flex-col md:flex-row" aria-busy="true" aria-label={t("common.loadingSession")}>
+      <div className="hidden w-64 shrink-0 border-r bg-sidebar p-4 md:block">
+        <Skeleton className="h-8 w-40" />
+        <div className="mt-8 flex flex-col gap-2">
+          {Array.from({ length: 9 }, (_, index) => (
+            <Skeleton key={index} className="h-8 w-full" />
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 p-6 lg:p-10">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="mt-6 h-32 w-full" />
+        {slow ? (
+          <div className="mt-6 flex items-center gap-3 rounded-xl border border-border/80 bg-muted/40 p-4 text-sm text-muted-foreground shadow-xs animate-in fade-in duration-500">
+            <span className="relative flex size-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-amber-500" />
+            </span>
+            <p className="leading-snug">{t("common.wakingServer")}</p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -17,6 +17,7 @@ export type Dict = {
     retry: string;
     loading: string;
     loadingSession: string;
+    wakingServer: string;
     actions: string;
     organization: string;
     skipToContent: string;

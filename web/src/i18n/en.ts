@@ -7,6 +7,7 @@ export const en: Dict = {
     retry: "Try again",
     loading: "Loading",
     loadingSession: "Loading session",
+    wakingServer: "Waking up the server… On Render free plans, this first request may take 30–50 seconds.",
     actions: "Actions",
     organization: "Organization",
     skipToContent: "Skip to content",

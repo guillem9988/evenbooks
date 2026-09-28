@@ -21,9 +21,14 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+  const signal = init?.signal ?? controller.signal;
+
   try {
     response = await fetch(apiPath(path), {
       ...init,
+      signal,
       credentials: "include",
       headers: {
         ...(init?.body instanceof FormData || init?.body === undefined ? {} : { "content-type": "application/json" }),
@@ -32,6 +37,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     throw new ApiError(t("api.offline"), 0);
+  } finally {
+    clearTimeout(timeoutId);
   }
   const body = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) {

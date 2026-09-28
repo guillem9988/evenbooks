@@ -7,6 +7,7 @@ export const ca: Dict = {
     retry: "Torna-ho a provar",
     loading: "Carregant",
     loadingSession: "Carregant la sessió",
+    wakingServer: "Despertant el servidor… En el pla gratuït de Render el primer accés pot trigar uns 30–50 segons.",
     actions: "Accions",
     organization: "Organització",
     skipToContent: "Salta al contingut",
