@@ -57,6 +57,12 @@ MinIO root user is `matchinvoice` / `matchinvoice-secret`. The server image is `
 - `npm run typecheck` — `tsc --noEmit`
 - `npx prisma migrate deploy` — apply SQL migrations
 
+## Deploy
+
+Production runs on Supabase (Postgres and Storage), Upstash Redis, Render (API, `Dockerfile` and `render.yaml`), and Vercel (`web/`). The step-by-step guide in Catalan is [`DEPLOY.md`](DEPLOY.md); the browser runbook for an agent is [`docs/codex-computer-use-deploy.md`](docs/codex-computer-use-deploy.md). Variable templates: [`.env.production.example`](.env.production.example) and [`web/.env.production.example`](web/.env.production.example).
+
+`GET /health/live` answers 200 without touching any dependency; Render uses it as the health check so probes do not spend the Redis quota.
+
 ## Layout
 
 ```
