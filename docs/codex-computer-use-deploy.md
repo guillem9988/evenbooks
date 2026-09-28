@@ -17,12 +17,12 @@ La guia humana equivalent és [`DEPLOY.md`](../DEPLOY.md). Si la interfície d�
    - qualsevol pregunta de consentiment legal (termes, DPA) que no sigui només acceptar els termes estàndard en crear el compte.
    Missatge a usar: `ATURADA [servei]: <què veig>. Necessito que <acció concreta>. Digues «fet» quan acabis.`
 2. **Mai acceptis un pla de pagament.** Tria sempre **Free** / **Hobby**. Si l’única opció visible és de pagament, ATURA’T.
-3. **Secrets.** Són secrets: contrasenya de la base de dades, `DATABASE_URL`, `REDIS_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `OPENAI_API_KEY`.
+3. **Secrets.** Són secrets: contrasenya de la base de dades, `DATABASE_URL`, `REDIS_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `OPENAI_API_KEY`, `GOOGLE_APPLICATION_CREDENTIALS_JSON` (el fitxer JSON de la clau del compte de servei de Google).
    - Copia’ls amb el botó **Copy** del servei i enganxa’ls **directament** al camp de destí (Render). No els escriguis en cap altre lloc.
    - **Mai** els enganxis a: el xat amb l’usuari, l’informe final, un fitxer del repositori, un commit, un issue, un pull request, un camp de Vercel que comenci per `NEXT_PUBLIC_`, ni un formulari públic.
    - A l’informe, escriu només `[desat a Render]` en lloc del valor.
    - Si has de retenir un secret entre pestanyes i el porta-retalls no basta, ATURA’T i demana a l’usuari que el desi al seu gestor de contrasenyes.
-4. **No són secrets** (es poden mostrar a l’informe): URL de Render, domini de Vercel, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, noms de projecte.
+4. **No són secrets** (es poden mostrar a l’informe): URL de Render, domini de Vercel, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, noms de projecte, `GOOGLE_CLOUD_PROJECT_ID`, `DOCUMENT_AI_LOCATION`, `DOCUMENT_AI_PROCESSOR_ID`, correu del compte de servei.
 5. **No canviïs codi** ni facis commits. Aquest runbook només crea serveis i configura variables.
 6. **Regió:** sempre **Frankfurt / `eu-central-1`** (és l’única regió europea de Render; tot junt redueix latència).
 7. **Nom:** `matchinvoice` a tot arreu on es demani un nom.
@@ -45,6 +45,10 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 | `REDIS_URL` | `[desat a Render]` | **Sí** |
 | URL API Render | `https://…onrender.com` | No |
 | Domini Vercel | `https://….vercel.app` | No |
+| `GOOGLE_CLOUD_PROJECT_ID` *(opcional)* | `matchinvoice-…` | No |
+| `DOCUMENT_AI_LOCATION` *(opcional)* | `eu` | No |
+| `DOCUMENT_AI_PROCESSOR_ID` *(opcional)* | `<id del processador>` | No |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` *(opcional)* | `[enganxat per l’usuari a Render]` | **Sí** |
 
 ---
 
@@ -164,7 +168,9 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 | `S3_SECRET_KEY` | Secret access key (pas 2.4.5) |
 | `WEB_ORIGIN` | `https://matchinvoice.vercel.app` (provisional; es corregeix al pas 6) |
 
-   No modifiquis les variables que ja tenen valor (`NODE_ENV`, `DATABASE_POOL_MAX`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE`, `COOKIE_SAME_SITE`, `COOKIE_SECURE`, `BULLMQ_*`).
+   Deixa **buits** `GOOGLE_CLOUD_PROJECT_ID`, `DOCUMENT_AI_PROCESSOR_ID` i `GOOGLE_APPLICATION_CREDENTIALS_JSON`: s’omplen al pas 8 (opcional). Sense ells, l’API fa servir OpenAI o el lector local.
+
+   No modifiquis les variables que ja tenen valor (`NODE_ENV`, `DATABASE_POOL_MAX`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE`, `COOKIE_SAME_SITE`, `COOKIE_SECURE`, `BULLMQ_*`, `INVOICE_EXTRACTOR`, `DOCUMENT_AI_LOCATION`).
 10. **Clica** **Apply** / **Deploy Blueprint** / **Create New Resources**.
 11. Si en aquest moment demana targeta o un pla de pagament → **ATURA’T** i no acceptis.
 
@@ -262,6 +268,85 @@ Porta aquesta taula a l’informe final. Els secrets mai apareixen en clar.
 
 ---
 
+## Pas 8 — *(Opcional)* Google Document AI (lector de factures)
+
+Document AI llegeix PDF i fotos de factures amb el processador **Invoice Parser** de Google. És opcional: sense aquest pas, l’API fa servir OpenAI (si hi ha `OPENAI_API_KEY`) o el lector local + Tesseract.
+
+> **Document AI exigeix un compte de facturació (billing) de Google Cloud amb targeta**, encara que facis servir crèdit gratuït. Es cobra per pàgina processada. Tu **no** crees ni vincules mai el compte de facturació: és un punt d’aturada obligatori (regla 1). Si l’usuari no el vol activar, salta aquest pas sencer.
+
+### 8.1 Projecte
+
+1. **Obre** `https://console.cloud.google.com`.
+2. Pantalla d’inici de sessió de Google, 2FA, passkey o verificació → **ATURA’T** (`ATURADA Google Cloud: cal iniciar sessió amb el compte de Google de l’usuari`).
+3. Si és el primer cop i demana acceptar els **Terms of Service** i triar país: país **Spain**, accepta només els termes estàndard. Si demana dades de facturació o targeta → **ATURA’T** (vegeu 8.2).
+4. **Clica** el selector de projecte (barra superior, al costat del logotip) → **New project**.
+5. **Escriu** **Project name**: `matchinvoice`. **Organization / Location**: deixa el valor per defecte (*No organization* en un compte personal).
+6. **Clica** **Create**. Espera la notificació i selecciona el projecte `matchinvoice`.
+7. **Comprova**: a **Dashboard** / **Project info** surt el **Project ID** (per exemple `matchinvoice` o `matchinvoice-123456`). Anota’l com a `GOOGLE_CLOUD_PROJECT_ID` (no és secret). Fes servir el **Project ID**, no el *Project number*.
+
+### 8.2 Facturació — ATURADA OBLIGATÒRIA
+
+1. **Obre** `https://console.cloud.google.com/billing/linkedaccount?project=<GOOGLE_CLOUD_PROJECT_ID>`.
+2. Sigui el que sigui el que vegis (*Link a billing account*, *Create billing account*, *Start free trial*, formulari de targeta), **ATURA’T**:
+   `ATURADA Google Cloud: Document AI necessita un compte de facturació vinculat al projecte matchinvoice. Crea’l o vincula’l tu (targeta, dades fiscals) i, si vols, posa un pressupost amb alertes a Billing → Budgets & alerts. Digues «fet» quan el projecte tingui facturació, o «salta» per no fer servir Document AI.`
+3. Si l’usuari diu «salta», ves directament a l’informe final i marca Document AI com a *no configurat*.
+4. **Comprova** (després de «fet»): la pàgina de facturació del projecte mostra un compte de facturació vinculat.
+
+### 8.3 Activar l’API
+
+1. **Obre** `https://console.cloud.google.com/apis/library/documentai.googleapis.com?project=<GOOGLE_CLOUD_PROJECT_ID>`.
+2. **Clica** **Enable**.
+3. **Comprova**: la pàgina passa a **API Enabled** / mostra **Manage**. Si diu que cal facturació → torna a 8.2.
+
+### 8.4 Processador Invoice Parser a `eu`
+
+1. **Obre** `https://console.cloud.google.com/ai/document-ai/processor-library?project=<GOOGLE_CLOUD_PROJECT_ID>`.
+2. Busca **Invoice Parser** → **Clica** **Create processor**.
+3. **Escriu / Tria**:
+   - **Processor name**: `matchinvoice-invoices`
+   - **Region**: **EU (European Union)** (`eu`). **No** triïs `US`.
+4. **Clica** **Create**.
+5. **Comprova**: s’obre la pàgina **Processor details** amb **Region** `eu`. Copia el camp **ID** (una cadena hexadecimal curta, per exemple `a1b2c3d4e5f6a7b8`) com a `DOCUMENT_AI_PROCESSOR_ID` (no és secret). El **Prediction endpoint** ha de començar per `https://eu-documentai.googleapis.com/`.
+
+### 8.5 Compte de servei i clau JSON
+
+1. **Obre** `https://console.cloud.google.com/iam-admin/serviceaccounts?project=<GOOGLE_CLOUD_PROJECT_ID>`.
+2. **Clica** **Create service account**.
+3. **Escriu** **Service account name**: `matchinvoice-docai` → **Create and continue**.
+4. **Grant this service account access to project** → **Select a role** → escriu `Document AI API User` → tria **Document AI API User** (`roles/documentai.apiUser`). No afegeixis cap altre rol (ni *Owner* ni *Editor*) → **Continue** → **Done**.
+5. **Clica** el compte `matchinvoice-docai@<project-id>.iam.gserviceaccount.com` → pestanya **Keys** → **Add key** → **Create new key** → **JSON** → **Create**.
+6. El navegador descarrega un fitxer `.json`. És **secret**. **No** l’obris, no el llegeixis en veu alta, no en copiïs el contingut.
+7. **ATURA’T**:
+   `ATURADA Google Cloud: s’ha descarregat la clau JSON del compte de servei matchinvoice-docai. Obre Render → matchinvoice-api → Environment → GOOGLE_APPLICATION_CREDENTIALS_JSON i enganxa-hi el contingut sencer del fitxer (pot anar en diverses línies; si el camp no ho accepta, a Terminal: jq -c . ~/Downloads/<fitxer>.json | pbcopy). Desa el fitxer al gestor de contrasenyes i esborra’l de Descàrregues. Digues «fet».`
+
+### 8.6 Variables a Render
+
+1. **Obre** `https://dashboard.render.com` → **matchinvoice-api** → **Environment**.
+2. Omple (o edita) aquestes variables:
+
+| Variable | Valor | Qui l’enganxa |
+| --- | --- | --- |
+| `GOOGLE_CLOUD_PROJECT_ID` | Project ID del pas 8.1 | Tu |
+| `DOCUMENT_AI_LOCATION` | `eu` (ja ve de `render.yaml`) | — |
+| `DOCUMENT_AI_PROCESSOR_ID` | ID del processador del pas 8.4 | Tu |
+| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | Contingut del fitxer JSON | **L’usuari** (pas 8.5.7) |
+| `INVOICE_EXTRACTOR` | `auto` (ja ve de `render.yaml`) | — |
+
+3. **Clica** **Save Changes** → Render redesplega.
+4. **Comprova** als **Logs** que l’API arrenca (`Server listening`). Si surt `GOOGLE_APPLICATION_CREDENTIALS_JSON must …`, el JSON enganxat no és complet: ATURA’T i demana a l’usuari que el torni a enganxar.
+5. **Comprova** al panell web: **Despeses** → puja un PDF o una foto de factura → ha de passar a **Analitzada**. Si falla, l’error de la factura indica quin proveïdor ha fallat (`Document AI: …`).
+
+### Si falla (Google Cloud)
+
+- *`PERMISSION_DENIED` … `billing`*: el projecte no té facturació vinculada → pas 8.2 (ATURADA).
+- *`PERMISSION_DENIED` … `documentai.processors.processWithVersion`*: al compte de servei li falta el rol **Document AI API User** → **IAM** → edita el compte → afegeix el rol.
+- *`NOT_FOUND` del processador*: `DOCUMENT_AI_PROCESSOR_ID` o `GOOGLE_CLOUD_PROJECT_ID` incorrectes, o el processador no és a `eu`.
+- *`SERVICE_DISABLED`*: l’API no està activada → pas 8.3.
+- *No es pot crear la clau (`iam.disableServiceAccountKeyCreation`)*: una política d’organització ho bloqueja. ATURA’T i explica-ho a l’usuari; cal que un administrador de l’organització la desactivi per a aquest projecte.
+- Si Document AI falla, les factures no es perden: l’API prova OpenAI o el lector local, i si cap no pot llegir-la la factura queda **Error** sense aturar la cua.
+
+---
+
 ## Informe final (plantilla)
 
 Retorna a l’usuari exactament això, sense cap secret:
@@ -274,7 +359,8 @@ Desplegament MatchInvoice
 - Render: matchinvoice-api (Free, Frankfurt) a <URL API Render> ✔/✘ — /health: <status, postgres, redis, minio>
 - Vercel: matchinvoice (Hobby) a <Domini Vercel> ✔/✘ — mode A (NEXT_PUBLIC_API_URL) o mode B (API_PROXY_URL)
 - Verificació: registre ✔/✘, recàrrega amb sessió ✔/✘, logout ✔/✘, login ✔/✘
-- Secrets: desats només a Render (DATABASE_URL, REDIS_URL, S3_ACCESS_KEY, S3_SECRET_KEY)
+- Google Document AI (opcional): projecte <project-id>, processador Invoice Parser <id> a eu, compte de servei matchinvoice-docai ✔/✘/saltat — facturació activada per l’usuari ✔/✘
+- Secrets: desats només a Render (DATABASE_URL, REDIS_URL, S3_ACCESS_KEY, S3_SECRET_KEY, GOOGLE_APPLICATION_CREDENTIALS_JSON si s’ha fet el pas 8)
 - Aturades: <llista de punts on has necessitat l’usuari>
 - Diferències d’interfície respecte al runbook: <si n’hi ha>
 ```
