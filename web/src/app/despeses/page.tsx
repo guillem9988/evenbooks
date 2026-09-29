@@ -2,9 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ReceiptIcon, RefreshCwIcon, RotateCcwIcon, SparklesIcon, UploadIcon } from "lucide-react";
+import {
+  FileTextIcon,
+  PencilIcon,
+  ReceiptIcon,
+  RefreshCwIcon,
+  RotateCcwIcon,
+  SparklesIcon,
+  UploadIcon,
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EditExpenseDialog, type ExpenseItem } from "@/components/edit-expense-dialog";
 import { useOrganizationId } from "@/components/shell";
 import { ExpenseStatusBadge } from "@/components/status-badges";
 import {
@@ -24,7 +33,7 @@ import {
 } from "@/components/ui-kit";
 import { UploadDialog } from "@/components/upload-dialog";
 import { useT } from "@/i18n";
-import { api } from "@/lib/api";
+import { api, apiPath } from "@/lib/api";
 import { euros } from "@/lib/money";
 
 const CATEGORIES = [
@@ -35,29 +44,19 @@ const CATEGORIES = [
   ["OTHER", "expenses.catOther"],
 ] as const;
 
-interface Expense {
-  id: string;
-  vendorName: string | null;
-  invoiceNumber: string | null;
-  invoiceDate: string | null;
-  status: string;
-  totalAmountCents: string | null;
-  taxAmountCents: string | null;
-  expenseCategory: string | null;
-}
-
 type Filter = "ALL" | "UNCATEGORIZED" | "PENDING" | "FAILED";
 
 export default function ExpensesPage() {
   const t = useT();
   const organizationId = useOrganizationId();
   const [uploading, setUploading] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
   const [saving, setSaving] = useState<string | null>(null);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const body = await api<{ expenses: Expense[] }>(`/organizations/${organizationId}/expenses`);
+    const body = await api<{ expenses: ExpenseItem[] }>(`/organizations/${organizationId}/expenses`);
     return body.expenses;
   }, [organizationId]);
 
@@ -99,7 +98,7 @@ export default function ExpensesPage() {
     }
   }
 
-  async function saveCategory(row: Expense, expenseCategory: string) {
+  async function saveCategory(row: ExpenseItem, expenseCategory: string) {
     setSaving(row.id);
     try {
       await api(`/organizations/${organizationId}/invoices/${row.id}`, { method: "PATCH", body: JSON.stringify({ expenseCategory }) });
@@ -136,7 +135,7 @@ export default function ExpensesPage() {
       {initialLoading ? (
         <>
           <CardsSkeleton count={3} className="lg:grid-cols-3" />
-          <TableSkeleton columns={6} />
+          <TableSkeleton columns={7} />
         </>
       ) : data ? (
         <>
@@ -193,6 +192,7 @@ export default function ExpensesPage() {
                           <TableHead className="text-right">{t("common.total")}</TableHead>
                           <TableHead>{t("common.status")}</TableHead>
                           <TableHead className="w-44">{t("expenses.category")}</TableHead>
+                          <TableHead className="w-24 text-right">{t("common.actions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -200,32 +200,66 @@ export default function ExpensesPage() {
                           <TableRow key={row.id}>
                             <TableCell className="font-medium">
                               {row.vendorName ?? <span className="text-muted-foreground">{t("expenses.vendorPending")}</span>}
+                              {row.vendorTaxId ? <span className="block text-xs font-normal text-muted-foreground">{row.vendorTaxId}</span> : null}
                               {row.invoiceNumber ? <span className="block text-xs font-normal text-muted-foreground">{row.invoiceNumber}</span> : null}
                             </TableCell>
                             <TableCell>{formatDate(row.invoiceDate)}</TableCell>
                             <TableCell className="text-right tabular-nums">{euros(row.taxAmountCents)}</TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{euros(row.totalAmountCents)}</TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-col items-start gap-1">
                                 <ExpenseStatusBadge status={row.status} />
                                 {row.status === "FAILED" ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    disabled={reprocessingId === row.id}
-                                    onClick={() => void reprocessInvoice(row.id)}
-                                    title={t("expenses.reprocess")}
-                                  >
-                                    <RotateCcwIcon className={reprocessingId === row.id ? "animate-spin" : ""} />
-                                    <span className="hidden xl:inline">
-                                      {reprocessingId === row.id ? t("expenses.reprocessing") : t("expenses.reprocess")}
-                                    </span>
-                                  </Button>
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <Button
+                                      variant="ghost"
+                                      size="xs"
+                                      disabled={reprocessingId === row.id}
+                                      onClick={() => void reprocessInvoice(row.id)}
+                                      title={t("expenses.reprocess")}
+                                    >
+                                      <RotateCcwIcon className={reprocessingId === row.id ? "animate-spin" : ""} />
+                                      <span className="hidden xl:inline">
+                                        {reprocessingId === row.id ? t("expenses.reprocessing") : t("expenses.reprocess")}
+                                      </span>
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="xs"
+                                      onClick={() => setEditingExpense(row)}
+                                      title={t("expenses.manualEntry")}
+                                    >
+                                      <PencilIcon className="size-3" />
+                                      <span className="hidden xl:inline">{t("expenses.manualEntry")}</span>
+                                    </Button>
+                                  </div>
                                 ) : null}
                               </div>
                             </TableCell>
                             <TableCell>
                               <CategorySelect row={row} disabled={saving === row.id} onSave={saveCategory} />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {row.hasFile !== false ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="xs"
+                                    title={t("expenses.viewDocument")}
+                                    onClick={() => window.open(apiPath(`/organizations/${organizationId}/invoices/${row.id}/file`), "_blank", "noopener,noreferrer")}
+                                  >
+                                    <FileTextIcon className="size-3.5" />
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  title={t("expenses.editExpense")}
+                                  onClick={() => setEditingExpense(row)}
+                                >
+                                  <PencilIcon className="size-3.5" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -238,6 +272,7 @@ export default function ExpensesPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-medium">{row.vendorName ?? t("expenses.vendorPending")}</p>
+                            {row.vendorTaxId ? <p className="text-xs text-muted-foreground">{row.vendorTaxId}</p> : null}
                             <p className="text-sm text-muted-foreground">{formatDate(row.invoiceDate)}</p>
                           </div>
                           <div className="flex flex-col items-end gap-1">
@@ -261,6 +296,28 @@ export default function ExpensesPage() {
                             <CategorySelect row={row} disabled={saving === row.id} onSave={saveCategory} />
                           </div>
                         </div>
+                        <div className="flex items-center justify-between border-t pt-2 mt-0.5">
+                          <div>
+                            {row.hasFile !== false ? (
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                onClick={() => window.open(apiPath(`/organizations/${organizationId}/invoices/${row.id}/file`), "_blank", "noopener,noreferrer")}
+                              >
+                                <FileTextIcon className="size-3" />
+                                {t("expenses.viewDocument")}
+                              </Button>
+                            ) : null}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => setEditingExpense(row)}
+                          >
+                            <PencilIcon className="size-3" />
+                            {t("common.edit")}
+                          </Button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -270,6 +327,19 @@ export default function ExpensesPage() {
           )}
         </>
       ) : null}
+
+      <EditExpenseDialog
+        open={Boolean(editingExpense)}
+        onOpenChange={(open) => !open && setEditingExpense(null)}
+        expense={editingExpense}
+        organizationId={organizationId}
+        onSaved={(updated) => {
+          setData((current) => current?.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)) ?? current);
+        }}
+        onDeleted={(id) => {
+          setData((current) => current?.filter((item) => item.id !== id) ?? current);
+        }}
+      />
 
       <UploadDialog
         open={uploading}
@@ -286,7 +356,7 @@ export default function ExpensesPage() {
   );
 }
 
-function CategorySelect({ row, disabled, onSave }: { row: Expense; disabled: boolean; onSave: (row: Expense, category: string) => void }) {
+function CategorySelect({ row, disabled, onSave }: { row: ExpenseItem; disabled: boolean; onSave: (row: ExpenseItem, category: string) => void }) {
   const t = useT();
   if (row.status !== "PARSED") {
     return <span className="text-xs text-muted-foreground">{t("expenses.whenAnalyzed")}</span>;

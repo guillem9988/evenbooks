@@ -3,7 +3,7 @@ import type { Queue } from "bullmq";
 import type { FastifyInstance } from "fastify";
 import { InvoiceStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import type { S3Client } from "@aws-sdk/client-s3";
-import { putObject } from "../lib/storage.js";
+import { deleteObject, getObject, putObject } from "../lib/storage.js";
 
 const ORGANIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -94,6 +94,61 @@ export function registerInvoiceRoutes(
     await queue.add("extract", { invoiceId }, { jobId, removeOnComplete: 200 });
 
     return reply.code(202).send({ ok: true, invoiceId });
+  });
+
+  app.get("/organizations/:organizationId/invoices/:invoiceId/file", async (request, reply) => {
+    const { organizationId, invoiceId } = request.params as { organizationId: string; invoiceId: string };
+    if (!ORGANIZATION_ID.test(organizationId) || !ORGANIZATION_ID.test(invoiceId)) {
+      return reply.code(400).send({ error: "organizationId and invoiceId must be UUIDs" });
+    }
+
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      select: { storageKey: true, mimeType: true, originalFilename: true },
+    });
+    if (invoice === null || !invoice.storageKey) {
+      return reply.code(404).send({ error: "Invoice file not found" });
+    }
+
+    try {
+      const buffer = await getObject(storage, bucket, invoice.storageKey);
+      const filename = encodeURIComponent(invoice.originalFilename || "invoice");
+      return reply
+        .header("Content-Type", invoice.mimeType || "application/octet-stream")
+        .header("Content-Disposition", `inline; filename="${filename}"; filename*=UTF-8''${filename}`)
+        .header("Cache-Control", "private, max-age=3600")
+        .send(buffer);
+    } catch (error) {
+      request.log.error({ err: error, invoiceId }, "failed to read invoice file from storage");
+      return reply.code(500).send({ error: "Failed to read invoice file" });
+    }
+  });
+
+  app.delete("/organizations/:organizationId/invoices/:invoiceId", async (request, reply) => {
+    const { organizationId, invoiceId } = request.params as { organizationId: string; invoiceId: string };
+    if (!ORGANIZATION_ID.test(organizationId) || !ORGANIZATION_ID.test(invoiceId)) {
+      return reply.code(400).send({ error: "organizationId and invoiceId must be UUIDs" });
+    }
+
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      select: { id: true, storageKey: true },
+    });
+    if (invoice === null) {
+      return reply.code(404).send({ error: "Invoice not found" });
+    }
+
+    if (invoice.storageKey) {
+      await deleteObject(storage, bucket, invoice.storageKey).catch((err) => {
+        request.log.warn({ err, invoiceId }, "could not delete invoice object from storage");
+      });
+    }
+
+    await prisma.invoice.delete({
+      where: { id: invoice.id },
+    });
+
+    return reply.send({ ok: true, id: invoice.id });
   });
 }
 

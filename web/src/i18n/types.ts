@@ -378,6 +378,24 @@ export type Dict = {
     reprocessing: string;
     reprocessSuccess: string;
     reprocessFailed: string;
+    editExpense: string;
+    editExpenseDescription: string;
+    vendorTaxId: string;
+    invoiceNumber: string;
+    invoiceDate: string;
+    baseAmount: string;
+    taxAmount: string;
+    totalAmount: string;
+    viewDocument: string;
+    downloadDocument: string;
+    deleteExpense: string;
+    deleteConfirm: string;
+    saveExpenseSuccess: string;
+    saveExpenseFailed: string;
+    deleteExpenseSuccess: string;
+    deleteExpenseFailed: string;
+    manualEntry: string;
+    calculateVat: string;
   };
   bank: {
     title: string;

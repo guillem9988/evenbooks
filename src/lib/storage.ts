@@ -1,4 +1,4 @@
-import { GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { S3Config } from "../config.js";
 
 export function createStorageClient(config: S3Config): S3Client {
@@ -39,6 +39,10 @@ export async function getObject(client: S3Client, bucket: string, key: string): 
     throw new Error(`Object ${key} is empty`);
   }
   return Buffer.from(await response.Body.transformToByteArray());
+}
+
+export async function deleteObject(client: S3Client, bucket: string, key: string): Promise<void> {
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 export async function checkStorage(client: S3Client, bucket: string): Promise<void> {
