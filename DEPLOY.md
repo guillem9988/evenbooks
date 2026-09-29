@@ -25,51 +25,37 @@ Si vols que un agent (Codex amb computer use) ho faci al navegador, segueix [`do
 Comptes que has de crear (tots amb pla gratuït, cap targeta necessària en principi):
 
 1. **GitHub** — ja tens el repositori `guillem9988/invoices`.
-2. **Supabase** — ja creat: projecte `invoices`, ref `<project-ref>`, regió Sydney (`ap-southeast-2`).
-3. **Upstash** — https://console.upstash.com (entra amb GitHub o correu). Encara per crear, a Sydney si el pla Free l’ofereix i, si no, a Singapore.
-4. **Render** — https://dashboard.render.com (entra amb GitHub). Encara per crear, amb la mateixa regla de regió que Upstash.
-5. **Vercel** — https://vercel.com (entra amb GitHub, pla **Hobby**). Encara per crear. Pot quedar global.
-6. *(Opcional)* **Google Cloud** — per llegir factures amb **Document AI** (Invoice Parser). **Exigeix un compte de facturació amb targeta**; es paga per pàgina. Vegeu el pas 4.5.
-7. *(Opcional)* **OpenAI** — només si vols llegir fotos de tiquets amb IA. Sense clau, els PDF amb text es llegeixen igualment i les fotos passen per Tesseract.
-
-Ordre dels lectors de factures (`INVOICE_EXTRACTOR=auto`, per defecte): **Document AI** si les seves variables hi són → **OpenAI** si hi ha `OPENAI_API_KEY` → **lector local + Tesseract**. Si un falla, es prova el següent; si cap no pot llegir la factura, queda en **Error** i la cua continua. També pots forçar el primer amb `documentai`, `openai` o `local`.
-
-Tingues a mà un gestor de contrasenyes per guardar-hi els valors a mesura que apareguin.
-
-Limitacions dels plans gratuïts que cal conèixer:
-
-- **Render Free** s’atura després de 15 minuts sense trànsit. La primera petició després triga uns 30–60 segons. Les factures pujades mentre dorm es processen quan es desperta.
-- **Supabase Free** pausa el projecte després d’una setmana sense activitat. Es reactiva des del panell.
-- **Upstash Free** dona 500.000 comandes al mes. El worker està configurat per consultar Redis cada 5 minuts quan no hi ha feina, i Render comprova `/health/live`, que no toca Redis.
-- **Vercel Hobby** és per a ús personal i no comercial.
+2. **Supabase** — https://supabase.com: crea un projecte (ex. `invoices`).
+3. **Upstash** — https://console.upstash.com (entra amb GitHub o correu).
+4. **Render** — https://dashboard.render.com (entra amb GitHub).
+5. **Vercel** — https://vercel.com (entra amb GitHub, pla **Hobby**).
+6. *(Opcional)* **Google Cloud** — per llegir factures amb **Document AI** (Invoice Parser).
+7. *(Opcional)* **OpenAI** — només si vols llegir fotos de tiquets amb IA.
 
 ---
 
 ## 1. GitHub
 
-1. Obre https://github.com/guillem9988/invoices i comprova que la branca `main` conté `Dockerfile`, `render.yaml` i `web/`.
-2. El repositori pot ser privat. Render i Vercel et demanaran permís per llegir-lo.
+1. Obre el teu repositori a GitHub i comprova que la branca `main` conté `Dockerfile`, `render.yaml` i `web/`.
+2. El repositori pot ser públic o privat. Render i Vercel et demanaran permís per llegir-lo.
 
 ---
 
-## 2. Supabase (Postgres + Storage) — ja creat
+## 2. Supabase (Postgres + Storage)
 
-No creïs un projecte nou. El projecte ja existeix:
+Configuració del projecte de Supabase:
 
 | | |
 | --- | --- |
 | Nom | `invoices` |
-| Ref | `<project-ref>` |
-| Regió | Sydney (`ap-southeast-2`). No és Frankfurt ni `eu-central-1`. |
-| Rol de connexió | `matchinvoice` (no l’usuari `postgres`) |
-| Session pooler | `aws-0-ap-southeast-2.pooler.supabase.com`, port **5432** |
-| Migracions | Ja aplicades |
-| Bucket | `matchinvoice`, privat, ja existeix |
+| Ref | `<el-teu-project-ref>` |
+| Session pooler | `aws-0-[regio].pooler.supabase.com`, port **5432** |
+| Bucket | `matchinvoice`, privat |
 | Extensions | `pg_trgm` i `pgcrypto` activades |
 
-La URI del Session pooler té aquesta forma. La contrasenya no va en aquesta guia:
+La URI del Session pooler té aquesta forma:
 
-`postgresql://matchinvoice.<project-ref>:[CONTRASENYA]@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres`
+`postgresql://postgres.[PROJECT_REF]:[CONTRASENYA]@aws-0-[REGIO].pooler.supabase.com:5432/postgres`
 
 No facis servir «Direct connection» (només IPv6, Render no hi arriba) ni «Transaction pooler» (port 6543). No cal afegir `?sslmode=require`: en producció l’API ja xifra la connexió amb Postgres. `DIRECT_URL` es pot deixar buit.
 

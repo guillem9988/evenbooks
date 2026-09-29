@@ -587,6 +587,16 @@ export type Dict = {
     saving: string;
     clearKey: string;
     clearConfirm: string;
+    apiServerTitle: string;
+    apiServerDescription: string;
+    apiServerUrl: string;
+    apiServerPlaceholder: string;
+    apiServerHint: string;
+    apiServerReset: string;
+    apiServerTest: string;
+    apiServerSuccess: string;
+    apiServerFailed: string;
+    apiServerSaved: string;
     guideTitle: string;
     guideP1: string;
     guideP2: string;

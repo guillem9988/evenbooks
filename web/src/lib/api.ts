@@ -1,11 +1,41 @@
 import { getLocale, localizeApiMessage, t } from "@/i18n/core";
 
+export const CUSTOM_API_URL_KEY = "matchinvoice-custom-api-url";
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 export const ORG_KEY = "matchinvoice-organization-id";
 
+export function getCustomApiUrl(): string | null {
+  if (typeof window !== "undefined") {
+    const val = window.localStorage.getItem(CUSTOM_API_URL_KEY);
+    if (val && val.trim() !== "") {
+      return val.trim().replace(/\/+$/, "");
+    }
+  }
+  return null;
+}
+
+export function setCustomApiUrl(url: string | null): void {
+  if (typeof window !== "undefined") {
+    if (url && url.trim() !== "") {
+      window.localStorage.setItem(CUSTOM_API_URL_KEY, url.trim().replace(/\/+$/, ""));
+    } else {
+      window.localStorage.removeItem(CUSTOM_API_URL_KEY);
+    }
+  }
+}
+
+export function getEffectiveApiUrl(): string {
+  const custom = getCustomApiUrl();
+  if (custom !== null) {
+    return custom;
+  }
+  return API_URL;
+}
+
 export function apiPath(path: string): string {
-  if (API_URL !== "") {
-    return `${API_URL}${path}`;
+  const base = getEffectiveApiUrl();
+  if (base !== "") {
+    return `${base}${path}`;
   }
   return `/backend${path}`;
 }

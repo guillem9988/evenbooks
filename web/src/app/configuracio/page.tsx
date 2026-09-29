@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   BotIcon,
   CheckCircle2Icon,
@@ -8,6 +8,7 @@ import {
   ExternalLinkIcon,
   InfoIcon,
   KeyRoundIcon,
+  ServerIcon,
   SparklesIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -27,7 +28,7 @@ import {
   useLoad,
 } from "@/components/ui-kit";
 import { useT } from "@/i18n";
-import { api } from "@/lib/api";
+import { api, apiPath, getCustomApiUrl, setCustomApiUrl } from "@/lib/api";
 
 interface ExtractorSettingsPayload {
   extractorMode: "auto" | "documentai" | "openai" | "local" | "system";
@@ -63,12 +64,53 @@ export default function SettingsPage() {
   const [docAiProcessor, setDocAiProcessor] = useState<string>("");
   const [docAiLocation, setDocAiLocation] = useState<string>("eu");
   const [docAiJson, setDocAiJson] = useState<string>("");
+  const [customApiUrl, setCustomApiUrlState] = useState<string>("");
 
   const [savingMode, setSavingMode] = useState(false);
   const [savingOpenAi, setSavingOpenAi] = useState(false);
   const [testingOpenAi, setTestingOpenAi] = useState(false);
   const [savingDocAi, setSavingDocAi] = useState(false);
   const [testingDocAi, setTestingDocAi] = useState(false);
+  const [testingApiServer, setTestingApiServer] = useState(false);
+
+  useEffect(() => {
+    setCustomApiUrlState(getCustomApiUrl() ?? "");
+  }, []);
+
+  async function testApiServer() {
+    setTestingApiServer(true);
+    try {
+      const url = customApiUrl.trim().replace(/\/+$/, "");
+      const testEndpoint = url !== "" ? `${url}/health` : apiPath("/health");
+      const res = await fetch(testEndpoint, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      if (body.status === "ok") {
+        notifySuccess(t("settings.apiServerSuccess"));
+      } else {
+        notifyError(new Error(JSON.stringify(body)), t("settings.apiServerFailed"));
+      }
+    } catch (cause) {
+      notifyError(cause, t("settings.apiServerFailed"));
+    } finally {
+      setTestingApiServer(false);
+    }
+  }
+
+  function saveApiServer() {
+    const clean = customApiUrl.trim();
+    setCustomApiUrl(clean || null);
+    setCustomApiUrlState(clean);
+    notifySuccess(clean ? t("settings.apiServerSaved") : t("settings.apiServerReset"));
+    void reload();
+  }
+
+  function resetApiServer() {
+    setCustomApiUrl(null);
+    setCustomApiUrlState("");
+    notifySuccess(t("settings.apiServerReset"));
+    void reload();
+  }
 
   const load = useCallback(async (): Promise<ExtractorSettingsPayload> => {
     const data = await api<ExtractorSettingsPayload>(`/organizations/${organizationId}/settings/extractor`);
@@ -528,6 +570,59 @@ export default function SettingsPage() {
                   {savingDocAi ? t("settings.saving") : t("settings.saveButton")}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 4: Connexió amb el servidor API */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <ServerIcon className="size-5 text-primary" />
+                <CardTitle>{t("settings.apiServerTitle")}</CardTitle>
+              </div>
+              <CardDescription>{t("settings.apiServerDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <Field
+                id="custom-api-url"
+                label={t("settings.apiServerUrl")}
+                hint={t("settings.apiServerHint")}
+              >
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="custom-api-url"
+                    value={customApiUrl}
+                    placeholder={t("settings.apiServerPlaceholder")}
+                    onChange={(e) => setCustomApiUrlState(e.target.value)}
+                    className="font-mono text-xs sm:text-sm"
+                  />
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={testingApiServer}
+                      onClick={testApiServer}
+                    >
+                      {testingApiServer ? t("settings.testing") : t("settings.apiServerTest")}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={saveApiServer}
+                    >
+                      {t("settings.saveButton")}
+                    </Button>
+                    {customApiUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={resetApiServer}
+                      >
+                        {t("settings.apiServerReset")}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </Field>
             </CardContent>
           </Card>
 
