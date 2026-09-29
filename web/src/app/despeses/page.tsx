@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ReceiptIcon, RefreshCwIcon, UploadIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ReceiptIcon, RefreshCwIcon, RotateCcwIcon, SparklesIcon, UploadIcon } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizationId } from "@/components/shell";
 import { ExpenseStatusBadge } from "@/components/status-badges";
@@ -53,6 +54,7 @@ export default function ExpensesPage() {
   const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState<Filter>("ALL");
   const [saving, setSaving] = useState<string | null>(null);
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const body = await api<{ expenses: Expense[] }>(`/organizations/${organizationId}/expenses`);
@@ -84,6 +86,19 @@ export default function ExpensesPage() {
     await reload();
   }
 
+  async function reprocessInvoice(invoiceId: string) {
+    setReprocessingId(invoiceId);
+    try {
+      await api(`/organizations/${organizationId}/invoices/${invoiceId}/reprocess`, { method: "POST" });
+      notifySuccess(t("expenses.reprocessSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("expenses.reprocessFailed"));
+    } finally {
+      setReprocessingId(null);
+    }
+  }
+
   async function saveCategory(row: Expense, expenseCategory: string) {
     setSaving(row.id);
     try {
@@ -104,6 +119,9 @@ export default function ExpensesPage() {
         description={t("expenses.description")}
         actions={
           <>
+            <Link href="/configuracio" className={buttonVariants({ variant: "outline" })}>
+              <SparklesIcon /> {t("expenses.configureAi")}
+            </Link>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCwIcon /> {t("expenses.refresh")}
             </Button>
@@ -188,7 +206,23 @@ export default function ExpensesPage() {
                             <TableCell className="text-right tabular-nums">{euros(row.taxAmountCents)}</TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{euros(row.totalAmountCents)}</TableCell>
                             <TableCell>
-                              <ExpenseStatusBadge status={row.status} />
+                              <div className="flex items-center gap-1.5">
+                                <ExpenseStatusBadge status={row.status} />
+                                {row.status === "FAILED" ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="xs"
+                                    disabled={reprocessingId === row.id}
+                                    onClick={() => void reprocessInvoice(row.id)}
+                                    title={t("expenses.reprocess")}
+                                  >
+                                    <RotateCcwIcon className={reprocessingId === row.id ? "animate-spin" : ""} />
+                                    <span className="hidden xl:inline">
+                                      {reprocessingId === row.id ? t("expenses.reprocessing") : t("expenses.reprocess")}
+                                    </span>
+                                  </Button>
+                                ) : null}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <CategorySelect row={row} disabled={saving === row.id} onSave={saveCategory} />
@@ -206,7 +240,20 @@ export default function ExpensesPage() {
                             <p className="truncate font-medium">{row.vendorName ?? t("expenses.vendorPending")}</p>
                             <p className="text-sm text-muted-foreground">{formatDate(row.invoiceDate)}</p>
                           </div>
-                          <ExpenseStatusBadge status={row.status} />
+                          <div className="flex flex-col items-end gap-1">
+                            <ExpenseStatusBadge status={row.status} />
+                            {row.status === "FAILED" ? (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                disabled={reprocessingId === row.id}
+                                onClick={() => void reprocessInvoice(row.id)}
+                              >
+                                <RotateCcwIcon className={reprocessingId === row.id ? "animate-spin" : ""} />
+                                {reprocessingId === row.id ? t("expenses.reprocessing") : t("expenses.reprocess")}
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-lg font-semibold tabular-nums">{euros(row.totalAmountCents)}</p>

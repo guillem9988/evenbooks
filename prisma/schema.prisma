@@ -78,6 +78,13 @@ model Organization {
   currency  String   @default("EUR") @db.VarChar(3)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  extractorMode              String?  @map("extractor_mode") @db.VarChar(20)
+  openaiApiKey               String?  @map("openai_api_key")
+  documentAiProjectId        String?  @map("document_ai_project_id") @db.VarChar(100)
+  documentAiProcessorId      String?  @map("document_ai_processor_id") @db.VarChar(100)
+  documentAiLocation         String?  @map("document_ai_location") @db.VarChar(50)
+  documentAiCredentialsJson  String?  @map("document_ai_credentials_json")
+
   bankStatements        BankStatement[]
   bankTransactions      BankTransaction[]
   invoices              Invoice[]

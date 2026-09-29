@@ -14,6 +14,7 @@ import {
   ReceiptIcon,
   RepeatIcon,
   ScaleIcon,
+  SettingsIcon,
   UsersIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ const GROUPS: Array<{ labelKey: string | null; links: NavLink[] }> = [
     links: [
       { href: "/impostos", labelKey: "nav.taxes", icon: ScaleIcon },
       { href: "/contactes", labelKey: "nav.contacts", icon: UsersIcon },
+      { href: "/configuracio", labelKey: "nav.settings", icon: SettingsIcon },
     ],
   },
 ];

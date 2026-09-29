@@ -1,5 +1,6 @@
 import { InvoiceStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
-import type { ExtractorConfig } from "../config.js";
+import type { ExtractorConfig, InvoiceExtractorMode } from "../config.js";
+import { readServiceAccount } from "../config.js";
 import { reconcileOrganization } from "../matching/reconcile.js";
 import { documentAiExtract } from "./document-ai.js";
 import { ExtractionError, extractInvoice, readLabeledText, type ExtractedInvoice } from "./extract.js";
@@ -46,18 +47,67 @@ export function extractorChain(config: ExtractorConfig): ExtractorName[] {
   return index === -1 ? available : available.slice(index);
 }
 
+export function resolveEffectiveExtractor(
+  org: {
+    extractorMode?: string | null;
+    openaiApiKey?: string | null;
+    documentAiProjectId?: string | null;
+    documentAiProcessorId?: string | null;
+    documentAiLocation?: string | null;
+    documentAiCredentialsJson?: string | null;
+  } | null | undefined,
+  systemConfig: ExtractorConfig,
+): ExtractorConfig {
+  const customMode = org?.extractorMode?.trim().toLowerCase();
+  const validModes: InvoiceExtractorMode[] = ["auto", "documentai", "openai", "local"];
+  const mode: InvoiceExtractorMode =
+    customMode && validModes.includes(customMode as InvoiceExtractorMode)
+      ? (customMode as InvoiceExtractorMode)
+      : systemConfig.mode;
+
+  const openaiApiKey =
+    org?.openaiApiKey && org.openaiApiKey.trim() !== ""
+      ? org.openaiApiKey.trim()
+      : systemConfig.openaiApiKey;
+
+  let documentAi = systemConfig.documentAi;
+  if (
+    org?.documentAiProjectId?.trim() &&
+    org?.documentAiProcessorId?.trim() &&
+    org?.documentAiCredentialsJson?.trim()
+  ) {
+    try {
+      const credentials = readServiceAccount(org.documentAiCredentialsJson.trim());
+      documentAi = {
+        projectId: org.documentAiProjectId.trim(),
+        processorId: org.documentAiProcessorId.trim(),
+        location: (org.documentAiLocation?.trim() || "eu").toLowerCase(),
+        credentials,
+      };
+    } catch {
+      documentAi = systemConfig.documentAi;
+    }
+  }
+
+  return { mode, openaiApiKey, documentAi };
+}
+
 export async function processInvoiceJob(
   prisma: PrismaClient,
   store: InvoiceObjectStore,
   invoiceId: string,
-  extractor: ExtractorConfig,
+  systemExtractor: ExtractorConfig,
   recognize: ImageRecognizer = recognizeImage,
 ): Promise<void> {
   try {
-    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { organization: true },
+    });
     if (invoice === null || invoice.status === InvoiceStatus.PARSED) {
       return;
     }
+    const extractor = resolveEffectiveExtractor(invoice.organization, systemExtractor);
     const bytes = await store.get(invoice.storageKey);
     const isPdf = invoice.mimeType === "application/pdf";
     const text = isPdf ? await extractPdfText(bytes) : null;

@@ -23,6 +23,7 @@ import { registerInvoiceRoutes } from "./routes/invoices.js";
 import { registerOrganizationRoutes } from "./routes/organizations.js";
 import { registerReconcileRoutes } from "./routes/reconcile.js";
 import { registerReconciliationRoutes } from "./routes/reconciliation.js";
+import { registerSettingsRoutes } from "./routes/settings.js";
 import { registerStatementRoutes } from "./routes/statements.js";
 import { startInvoiceWorker } from "./workers/invoice-worker.js";
 
@@ -74,6 +75,7 @@ export async function buildServer(config: AppConfig) {
   registerReconciliationRoutes(app, database.prisma);
   registerStatementRoutes(app, database.prisma);
   registerInvoiceRoutes(app, database.prisma, storage, config.s3.bucket, invoiceQueue);
+  registerSettingsRoutes(app, database.prisma, config.extractor);
   registerReportRoutes(app, database.prisma, {
     get: (key) => getObject(storage, config.s3.bucket, key),
   });

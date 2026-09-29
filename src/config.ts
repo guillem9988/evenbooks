@@ -219,7 +219,7 @@ export function registrationStatus(registration: RegistrationConfig): { open: bo
   return { open: false, inviteRequired: false };
 }
 
-function readServiceAccount(raw: string): ServiceAccountCredentials {
+export function readServiceAccount(raw: string): ServiceAccountCredentials {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

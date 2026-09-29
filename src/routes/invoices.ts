@@ -72,6 +72,29 @@ export function registerInvoiceRoutes(
 
     return reply.code(202).send({ invoiceIds });
   });
+
+  app.post("/organizations/:organizationId/invoices/:invoiceId/reprocess", async (request, reply) => {
+    const { organizationId, invoiceId } = request.params as { organizationId: string; invoiceId: string };
+    if (!ORGANIZATION_ID.test(organizationId) || !ORGANIZATION_ID.test(invoiceId)) {
+      return reply.code(400).send({ error: "organizationId and invoiceId must be UUIDs" });
+    }
+
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+    });
+    if (invoice === null) {
+      return reply.code(404).send({ error: "Invoice not found" });
+    }
+
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { status: InvoiceStatus.PROCESSING, errorMessage: null },
+    });
+    const jobId = `${invoiceId}-${Date.now()}`;
+    await queue.add("extract", { invoiceId }, { jobId, removeOnComplete: 200 });
+
+    return reply.code(202).send({ ok: true, invoiceId });
+  });
 }
 
 function safeName(filename: string): string {
