@@ -132,9 +132,13 @@ export default function SettingsPage() {
   const [savingDocAi, setSavingDocAi] = useState(false);
   const [testingDocAi, setTestingDocAi] = useState(false);
   const [testingApiServer, setTestingApiServer] = useState(false);
+  const [googleAuthStatus, setGoogleAuthStatus] = useState<{ googleAuthEnabled: boolean; googleClientId: string | null } | null>(null);
 
   useEffect(() => {
     setCustomApiUrlState(getCustomApiUrl() ?? "");
+    void api<{ googleAuthEnabled: boolean; googleClientId: string | null }>("/auth/registration")
+      .then(setGoogleAuthStatus)
+      .catch(() => {});
   }, []);
 
   async function testApiServer() {
@@ -1227,6 +1231,84 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Field>
+            </CardContent>
+          </Card>
+
+          {/* Card 5: Google Sign-in / Identity Platform */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <svg className="size-5 shrink-0" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.27-2.09 3.66-5.17 3.66-9.12z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.13C3.25 21.3 7.31 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.57H1.27C.46 8.2 0 10.04 0 12s.46 3.8 1.27 5.43l4.01-3.14z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.57l4.01 3.14c.95-2.83 3.6-4.96 6.72-4.96z"
+                    />
+                  </svg>
+                  <CardTitle>Login amb Google (Google Identity Services)</CardTitle>
+                </div>
+                <CardDescription>
+                  Permet l'accés instantani i segur amb un sol clic amb comptes de Google (OAuth 2.0 i FedCM).
+                </CardDescription>
+              </div>
+              {googleAuthStatus?.googleAuthEnabled ? (
+                <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2Icon className="mr-1 size-3" />
+                  Actiu
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-muted-foreground">
+                  Pendent de claus
+                </Badge>
+              )}
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="rounded-lg border bg-muted/20 p-3.5 text-xs text-muted-foreground flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-foreground">Estat de Google Identity:</span>
+                  <span className="font-mono">
+                    {googleAuthStatus?.googleClientId
+                      ? `Client ID: ${googleAuthStatus.googleClientId.slice(0, 16)}••••`
+                      : "Sense Client ID configurat a l'entorn"}
+                  </span>
+                </div>
+                <p>
+                  Per activar-lo a producció, crea un client OAuth a la nova <strong>Google Auth Platform</strong> de Google Cloud Console i afegeix <code className="font-mono text-foreground font-semibold">GOOGLE_CLIENT_ID</code> i <code className="font-mono text-foreground font-semibold">GOOGLE_CLIENT_SECRET</code> a les variables d'entorn.
+                </p>
+                <div className="mt-2 flex flex-col gap-1.5 font-mono text-[11px] bg-background/60 p-2.5 rounded border">
+                  <div>
+                    <span className="text-muted-foreground">Authorized JavaScript origins:</span>{" "}
+                    <span className="text-foreground">{typeof window !== "undefined" ? window.location.origin : "https://matchinvoice.vercel.app"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Authorized redirect URIs:</span>{" "}
+                    <span className="text-foreground">{typeof window !== "undefined" ? `${window.location.origin}/backend/auth/google/callback` : "https://matchinvoice.vercel.app/backend/auth/google/callback"}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-end">
+                <a
+                  href="https://console.cloud.google.com/auth"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+                >
+                  <span>Obrir Google Auth Platform</span>
+                  <ExternalLinkIcon className="size-3.5" />
+                </a>
+              </div>
             </CardContent>
           </Card>
 
