@@ -72,12 +72,41 @@ interface ExtractorSettingsPayload {
   };
 }
 
+const GEMINI_MODELS = [
+  { id: "gemini-2.5-flash", name: "gemini-2.5-flash", badge: "Recomanat" },
+  { id: "gemini-2.5-pro", name: "gemini-2.5-pro", badge: "Màxima precisió" },
+  { id: "gemini-2.0-flash", name: "gemini-2.0-flash", badge: "Equilibrat" },
+  { id: "gemini-1.5-flash", name: "gemini-1.5-flash", badge: "Estable" },
+  { id: "gemini-3.8-flash", name: "gemini-3.8-flash", badge: "Darrera gen" },
+];
+
+const OPENAI_MODELS = [
+  { id: "gpt-4o", name: "gpt-4o", badge: "Recomanat" },
+  { id: "gpt-4o-mini", name: "gpt-4o-mini", badge: "Econòmic" },
+  { id: "o3-mini", name: "o3-mini", badge: "Raonament" },
+  { id: "o1", name: "o1", badge: "Avançat" },
+  { id: "gpt-4.5-preview", name: "gpt-4.5-preview", badge: "Preview" },
+];
+
+const ANTHROPIC_MODELS = [
+  { id: "claude-3-7-sonnet-latest", name: "claude-3-7-sonnet-latest", badge: "Recomanat" },
+  { id: "claude-3-5-sonnet-latest", name: "claude-3-5-sonnet-latest", badge: "Alta precisió" },
+  { id: "claude-3-5-haiku-latest", name: "claude-3-5-haiku-latest", badge: "Ultraràpid" },
+];
+
+const DEEPSEEK_MODELS = [
+  { id: "deepseek-chat", name: "deepseek-chat (V3)", badge: "Recomanat" },
+  { id: "deepseek-reasoner", name: "deepseek-reasoner (R1)", badge: "Raonament" },
+];
+
 export default function SettingsPage() {
   const t = useT();
   const organizationId = useOrganizationId();
 
   // Form states
   const [mode, setMode] = useState<string>("auto");
+  const [activeModel, setActiveModel] = useState<string>("");
+  const [customModelInput, setCustomModelInput] = useState<string>("");
   const [geminiKey, setGeminiKey] = useState<string>("");
   const [openaiKey, setOpenaiKey] = useState<string>("");
   const [anthropicKey, setAnthropicKey] = useState<string>("");
@@ -143,12 +172,30 @@ export default function SettingsPage() {
   const load = useCallback(async (): Promise<ExtractorSettingsPayload> => {
     const data = await api<ExtractorSettingsPayload>(`/organizations/${organizationId}/settings/extractor`);
     setMode(data.extractorMode);
+    setActiveModel(data.extractorModel || "");
+    setCustomModelInput(data.extractorModel || "");
     setDocAiProject(data.documentAi.projectId || "");
     setDocAiLocation(data.documentAi.location || "eu");
     return data;
   }, [organizationId]);
 
   const { data, error, initialLoading, reload } = useLoad(load, t("settings.loadFailed"));
+
+  async function applyModel(modelName: string) {
+    try {
+      const val = modelName.trim() || null;
+      await api(`/organizations/${organizationId}/settings/extractor`, {
+        method: "PUT",
+        body: JSON.stringify({ extractorModel: val }),
+      });
+      setActiveModel(val || "");
+      setCustomModelInput(val || "");
+      notifySuccess(t("settings.saveSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("settings.saveFailed"));
+    }
+  }
 
   async function saveMode(newMode: string) {
     setSavingMode(true);
@@ -497,6 +544,72 @@ export default function SettingsPage() {
     );
   }
 
+  function renderModelSelector(models: Array<{ id: string; name: string; badge?: string }>) {
+    return (
+      <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
+          <span className="font-semibold text-foreground">{t("settings.modelSelectorTitle")}</span>
+          {activeModel ? (
+            <span className="text-[11px] text-muted-foreground">
+              {t("settings.modelActiveLabel")}{" "}
+              <span className="font-mono font-medium text-foreground">{activeModel}</span>
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">{t("settings.modelDefaultLabel")}</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {models.map((m) => {
+            const isSelected = activeModel === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => applyModel(m.id)}
+                className={`rounded-md border px-2.5 py-1 text-xs font-mono transition-all ${
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground font-semibold shadow-xs"
+                    : "border-border bg-card hover:border-primary/50 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {m.name} {m.badge ? `· ${m.badge}` : ""}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-1 flex gap-2">
+          <Input
+            type="text"
+            placeholder={t("settings.modelCustomPlaceholder")}
+            value={customModelInput}
+            onChange={(e) => setCustomModelInput(e.target.value)}
+            className="h-8 font-mono text-xs"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 shrink-0 text-xs"
+            onClick={() => applyModel(customModelInput)}
+          >
+            {t("settings.modelApplyButton")}
+          </Button>
+          {activeModel ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 shrink-0 text-xs text-muted-foreground"
+              onClick={() => applyModel("")}
+            >
+              {t("settings.modelResetDefault")}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <PageHeader title={t("settings.title")} description={t("settings.description")} />
@@ -699,6 +812,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Field>
+
+              {renderModelSelector(GEMINI_MODELS)}
             </CardContent>
           </Card>
 
@@ -779,6 +894,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Field>
+
+              {renderModelSelector(OPENAI_MODELS)}
             </CardContent>
           </Card>
 
@@ -859,6 +976,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Field>
+
+              {renderModelSelector(ANTHROPIC_MODELS)}
             </CardContent>
           </Card>
 
@@ -939,6 +1058,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Field>
+
+              {renderModelSelector(DEEPSEEK_MODELS)}
             </CardContent>
           </Card>
 

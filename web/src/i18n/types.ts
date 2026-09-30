@@ -642,5 +642,11 @@ export type Dict = {
     guideTitle: string;
     guideP1: string;
     guideP2: string;
+    modelSelectorTitle: string;
+    modelActiveLabel: string;
+    modelDefaultLabel: string;
+    modelCustomPlaceholder: string;
+    modelApplyButton: string;
+    modelResetDefault: string;
   };
 };

@@ -637,5 +637,11 @@ export const es: Dict = {
     guideTitle: "¿Cómo funciona el lector de facturas?",
     guideP1: "Las claves se guardan de forma segura y solo se usan para analizar las facturas de tu organización.",
     guideP2: "Si no configuras ninguna, MatchInvoice usará el lector local gratuito con Tesseract para fotos y el texto interno de los PDF.",
+    modelSelectorTitle: "Modelos disponibles / recomendados:",
+    modelActiveLabel: "Modelo activo:",
+    modelDefaultLabel: "Predeterminado del proveedor",
+    modelCustomPlaceholder: "O escribe cualquier otro modelo (p. ej. gemini-3.8-flash, o3-mini...)",
+    modelApplyButton: "Aplicar modelo",
+    modelResetDefault: "Restablecer por defecto",
   },
 };

@@ -637,5 +637,11 @@ export const en: Dict = {
     guideTitle: "How does invoice extraction work?",
     guideP1: "Keys are stored securely and only used to analyze invoices for your organization.",
     guideP2: "If no key is configured, MatchInvoice uses the free local OCR parser (Tesseract) and embedded PDF text.",
+    modelSelectorTitle: "Available / recommended models:",
+    modelActiveLabel: "Active model:",
+    modelDefaultLabel: "Provider default",
+    modelCustomPlaceholder: "Or enter any other model name (e.g. gemini-3.8-flash, o3-mini...)",
+    modelApplyButton: "Apply model",
+    modelResetDefault: "Reset to default",
   },
 };

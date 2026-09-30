@@ -637,5 +637,11 @@ export const ca: Dict = {
     guideTitle: "Com funciona el lector de factures?",
     guideP1: "Les claus es desen de manera segura i només s’utilitzen per analitzar les factures de la teva organització.",
     guideP2: "Si no en configures cap, MatchInvoice farà servir el lector local gratuït amb Tesseract per a les fotos i el text intern dels PDF.",
+    modelSelectorTitle: "Models disponibles / recomanats:",
+    modelActiveLabel: "Model actiu:",
+    modelDefaultLabel: "Predeterminat del proveïdor",
+    modelCustomPlaceholder: "O escriu qualsevol altre model (p. ex. gemini-3.8-flash, o3-mini...)",
+    modelApplyButton: "Aplica model",
+    modelResetDefault: "Restableix per defecte",
   },
 };
