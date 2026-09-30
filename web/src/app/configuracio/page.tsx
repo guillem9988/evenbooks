@@ -73,29 +73,32 @@ interface ExtractorSettingsPayload {
 }
 
 const GEMINI_MODELS = [
-  { id: "gemini-2.5-flash", name: "gemini-2.5-flash", badge: "Recomanat" },
-  { id: "gemini-2.5-pro", name: "gemini-2.5-pro", badge: "Màxima precisió" },
-  { id: "gemini-2.0-flash", name: "gemini-2.0-flash", badge: "Equilibrat" },
-  { id: "gemini-1.5-flash", name: "gemini-1.5-flash", badge: "Estable" },
-  { id: "gemini-3.8-flash", name: "gemini-3.8-flash", badge: "Darrera gen" },
+  { id: "gemini-3.8-flash", name: "gemini-3.8-flash", badge: "Nou Flagship" },
+  { id: "gemini-3.5-flash", name: "gemini-3.5-flash", badge: "Ràpid & Eficient" },
+  { id: "gemini-3.1-pro", name: "gemini-3.1-pro", badge: "Màxima precisió" },
+  { id: "gemini-2.5-flash", name: "gemini-2.5-flash", badge: "Estable" },
 ];
 
 const OPENAI_MODELS = [
-  { id: "gpt-4o", name: "gpt-4o", badge: "Recomanat" },
-  { id: "gpt-4o-mini", name: "gpt-4o-mini", badge: "Econòmic" },
+  { id: "gpt-6-astra", name: "gpt-6-astra", badge: "Nou Flagship" },
+  { id: "gpt-6.1-sol", name: "gpt-6.1-sol", badge: "Equilibrat" },
+  { id: "gpt-6-luna", name: "gpt-6-luna", badge: "Econòmic" },
+  { id: "gpt-4o", name: "gpt-4o", badge: "Estable" },
   { id: "o3-mini", name: "o3-mini", badge: "Raonament" },
-  { id: "o1", name: "o1", badge: "Avançat" },
-  { id: "gpt-4.5-preview", name: "gpt-4.5-preview", badge: "Preview" },
 ];
 
 const ANTHROPIC_MODELS = [
-  { id: "claude-3-7-sonnet-latest", name: "claude-3-7-sonnet-latest", badge: "Recomanat" },
-  { id: "claude-3-5-sonnet-latest", name: "claude-3-5-sonnet-latest", badge: "Alta precisió" },
-  { id: "claude-3-5-haiku-latest", name: "claude-3-5-haiku-latest", badge: "Ultraràpid" },
+  { id: "claude-opus-5-5", name: "claude-opus-5-5", badge: "Nou Flagship" },
+  { id: "claude-fable-5-1", name: "claude-fable-5-1", badge: "Alta precisió" },
+  { id: "claude-sonnet-5", name: "claude-sonnet-5", badge: "Equilibrat" },
+  { id: "claude-3-7-sonnet-latest", name: "claude-3-7-sonnet", badge: "Estable" },
+  { id: "claude-haiku-4-5", name: "claude-haiku-4-5", badge: "Ultraràpid" },
 ];
 
 const DEEPSEEK_MODELS = [
-  { id: "deepseek-chat", name: "deepseek-chat (V3)", badge: "Recomanat" },
+  { id: "deepseek-flash", name: "deepseek-flash (V4.1)", badge: "Nou Flagship" },
+  { id: "deepseek-v4-pro", name: "deepseek-v4-pro", badge: "Avançat" },
+  { id: "deepseek-chat", name: "deepseek-chat (V3)", badge: "Estable" },
   { id: "deepseek-reasoner", name: "deepseek-reasoner (R1)", badge: "Raonament" },
 ];
 
@@ -746,10 +749,10 @@ export default function SettingsPage() {
                 <CardDescription>{t("settings.geminiDescription")}</CardDescription>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-mono text-[11px]">
-                    gemini-2.5-flash (predeterminat)
+                    gemini-3.8-flash (nou flagship)
                   </Badge>
                   <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
-                    gemini-2.5-pro
+                    gemini-3.5-flash
                   </Badge>
                 </div>
               </div>
@@ -828,10 +831,10 @@ export default function SettingsPage() {
                 <CardDescription>{t("settings.openAiDescription")}</CardDescription>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-mono text-[11px]">
-                    gpt-4o (recomanat)
+                    gpt-6-astra (nou flagship)
                   </Badge>
                   <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
-                    gpt-4o-mini
+                    gpt-6.1-sol
                   </Badge>
                 </div>
               </div>
@@ -910,10 +913,10 @@ export default function SettingsPage() {
                 <CardDescription>{t("settings.anthropicDescription")}</CardDescription>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 font-mono text-[11px]">
-                    claude-3-7-sonnet-latest (recomanat)
+                    claude-opus-5-5 (nou flagship)
                   </Badge>
                   <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
-                    claude-3-5-haiku-latest
+                    claude-sonnet-5
                   </Badge>
                 </div>
               </div>
@@ -992,10 +995,10 @@ export default function SettingsPage() {
                 <CardDescription>{t("settings.deepseekDescription")}</CardDescription>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   <Badge variant="outline" className="bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 font-mono text-[11px]">
-                    deepseek-chat (V3) (recomanat)
+                    deepseek-flash (V4.1) (nou flagship)
                   </Badge>
                   <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
-                    deepseek-reasoner (R1)
+                    deepseek-v4-pro
                   </Badge>
                 </div>
               </div>
