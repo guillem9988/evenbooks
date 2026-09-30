@@ -82,6 +82,8 @@ model Organization {
   openaiApiKey               String?  @map("openai_api_key")
   anthropicApiKey            String?  @map("anthropic_api_key")
   deepseekApiKey             String?  @map("deepseek_api_key")
+  geminiApiKey               String?  @map("gemini_api_key")
+  extractorModel             String?  @map("extractor_model") @db.VarChar(50)
   documentAiProjectId        String?  @map("document_ai_project_id") @db.VarChar(100)
   documentAiProcessorId      String?  @map("document_ai_processor_id") @db.VarChar(100)
   documentAiLocation         String?  @map("document_ai_location") @db.VarChar(50)

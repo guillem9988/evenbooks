@@ -573,6 +573,8 @@ export type Dict = {
     modeDescription: string;
     modeAuto: string;
     modeAutoHint: string;
+    modeGemini: string;
+    modeGeminiHint: string;
     modeDocAi: string;
     modeDocAiHint: string;
     modeOpenAi: string;
@@ -585,6 +587,11 @@ export type Dict = {
     modeLocalHint: string;
     modeSystem: string;
     modeSystemHint: string;
+    geminiTitle: string;
+    geminiDescription: string;
+    geminiKeyLabel: string;
+    geminiKeyPlaceholder: string;
+    geminiKeyHint: string;
     openAiTitle: string;
     openAiDescription: string;
     openAiKeyLabel: string;

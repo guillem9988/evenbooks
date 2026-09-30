@@ -37,6 +37,8 @@ export function registerSettingsRoutes(
       select: {
         id: true,
         extractorMode: true,
+        extractorModel: true,
+        geminiApiKey: true,
         openaiApiKey: true,
         anthropicApiKey: true,
         deepseekApiKey: true,
@@ -51,6 +53,7 @@ export function registerSettingsRoutes(
       return reply.code(404).send({ error: "Organization not found" });
     }
 
+    const customGemini = Boolean(org.geminiApiKey && org.geminiApiKey.trim() !== "");
     const customOpenAi = Boolean(org.openaiApiKey && org.openaiApiKey.trim() !== "");
     const customAnthropic = Boolean(org.anthropicApiKey && org.anthropicApiKey.trim() !== "");
     const customDeepseek = Boolean(org.deepseekApiKey && org.deepseekApiKey.trim() !== "");
@@ -63,6 +66,12 @@ export function registerSettingsRoutes(
     return reply.send({
       extractorMode: org.extractorMode ?? "system",
       effectiveMode: org.extractorMode && org.extractorMode !== "system" ? org.extractorMode : systemConfig.mode,
+      extractorModel: org.extractorModel ?? null,
+      gemini: {
+        configured: customGemini || Boolean(systemConfig.geminiApiKey),
+        keyPreview: customGemini ? maskKey(org.geminiApiKey!) : (systemConfig.geminiApiKey ? maskKey(systemConfig.geminiApiKey) : null),
+        source: customGemini ? "organization" : (systemConfig.geminiApiKey ? "system" : "none"),
+      },
       openai: {
         configured: customOpenAi || Boolean(systemConfig.openaiApiKey),
         keyPreview: customOpenAi ? maskKey(org.openaiApiKey!) : (systemConfig.openaiApiKey ? maskKey(systemConfig.openaiApiKey) : null),
@@ -87,6 +96,7 @@ export function registerSettingsRoutes(
         source: customDocAi ? "organization" : (systemConfig.documentAi ? "system" : "none"),
       },
       systemDefaults: {
+        hasGemini: Boolean(systemConfig.geminiApiKey),
         hasOpenAi: Boolean(systemConfig.openaiApiKey),
         hasAnthropic: Boolean(systemConfig.anthropicApiKey),
         hasDeepseek: Boolean(systemConfig.deepseekApiKey),
@@ -109,6 +119,8 @@ export function registerSettingsRoutes(
 
     const body = request.body as {
       extractorMode?: unknown;
+      extractorModel?: unknown;
+      geminiApiKey?: unknown;
       openaiApiKey?: unknown;
       anthropicApiKey?: unknown;
       deepseekApiKey?: unknown;
@@ -120,6 +132,8 @@ export function registerSettingsRoutes(
 
     const updateData: {
       extractorMode?: string | null;
+      extractorModel?: string | null;
+      geminiApiKey?: string | null;
       openaiApiKey?: string | null;
       anthropicApiKey?: string | null;
       deepseekApiKey?: string | null;
@@ -136,6 +150,7 @@ export function registerSettingsRoutes(
         mode !== "" &&
         mode !== "system" &&
         mode !== "auto" &&
+        mode !== "gemini" &&
         mode !== "documentai" &&
         mode !== "openai" &&
         mode !== "anthropic" &&
@@ -143,10 +158,26 @@ export function registerSettingsRoutes(
         mode !== "local"
       ) {
         return reply.code(400).send({
-          error: "El mode d'extracció ha de ser: system, auto, documentai, openai, anthropic, deepseek o local",
+          error: "El mode d'extracció ha de ser: system, auto, gemini, documentai, openai, anthropic, deepseek o local",
         });
       }
       updateData.extractorMode = mode === "system" || mode === "" ? null : mode;
+    }
+
+    if (body.extractorModel !== undefined) {
+      if (body.extractorModel === null || body.extractorModel === "") {
+        updateData.extractorModel = null;
+      } else if (typeof body.extractorModel === "string") {
+        updateData.extractorModel = body.extractorModel.trim();
+      }
+    }
+
+    if (body.geminiApiKey !== undefined) {
+      if (body.geminiApiKey === null || body.geminiApiKey === "") {
+        updateData.geminiApiKey = null;
+      } else if (typeof body.geminiApiKey === "string") {
+        updateData.geminiApiKey = body.geminiApiKey.trim();
+      }
     }
 
     if (body.openaiApiKey !== undefined) {
@@ -211,6 +242,8 @@ export function registerSettingsRoutes(
       select: {
         id: true,
         extractorMode: true,
+        extractorModel: true,
+        geminiApiKey: true,
         openaiApiKey: true,
         anthropicApiKey: true,
         deepseekApiKey: true,
@@ -221,6 +254,7 @@ export function registerSettingsRoutes(
       },
     });
 
+    const customGemini = Boolean(updated.geminiApiKey && updated.geminiApiKey.trim() !== "");
     const customOpenAi = Boolean(updated.openaiApiKey && updated.openaiApiKey.trim() !== "");
     const customAnthropic = Boolean(updated.anthropicApiKey && updated.anthropicApiKey.trim() !== "");
     const customDeepseek = Boolean(updated.deepseekApiKey && updated.deepseekApiKey.trim() !== "");
@@ -233,6 +267,12 @@ export function registerSettingsRoutes(
     return reply.send({
       extractorMode: updated.extractorMode ?? "system",
       effectiveMode: updated.extractorMode && updated.extractorMode !== "system" ? updated.extractorMode : systemConfig.mode,
+      extractorModel: updated.extractorModel ?? null,
+      gemini: {
+        configured: customGemini || Boolean(systemConfig.geminiApiKey),
+        keyPreview: customGemini ? maskKey(updated.geminiApiKey!) : (systemConfig.geminiApiKey ? maskKey(systemConfig.geminiApiKey) : null),
+        source: customGemini ? "organization" : (systemConfig.geminiApiKey ? "system" : "none"),
+      },
       openai: {
         configured: customOpenAi || Boolean(systemConfig.openaiApiKey),
         keyPreview: customOpenAi ? maskKey(updated.openaiApiKey!) : (systemConfig.openaiApiKey ? maskKey(systemConfig.openaiApiKey) : null),
@@ -257,6 +297,7 @@ export function registerSettingsRoutes(
         source: customDocAi ? "organization" : (systemConfig.documentAi ? "system" : "none"),
       },
       systemDefaults: {
+        hasGemini: Boolean(systemConfig.geminiApiKey),
         hasOpenAi: Boolean(systemConfig.openaiApiKey),
         hasAnthropic: Boolean(systemConfig.anthropicApiKey),
         hasDeepseek: Boolean(systemConfig.deepseekApiKey),
@@ -287,6 +328,30 @@ export function registerSettingsRoutes(
         credentialsJson?: unknown;
       };
     };
+
+    if (body.provider === "gemini") {
+      const candidateKey = typeof body.apiKey === "string" && body.apiKey.trim() !== ""
+        ? body.apiKey.trim()
+        : (org.geminiApiKey ?? systemConfig.geminiApiKey);
+
+      if (!candidateKey) {
+        return reply.code(400).send({ ok: false, error: "No hi ha cap clau de Google Gemini per provar." });
+      }
+
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(candidateKey)}`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          return reply.code(400).send({ ok: false, error: `Error de Google Gemini (${res.status}): ${err}` });
+        }
+        return reply.send({ ok: true, message: "Connexió amb Google Gemini API confirmada correctament." });
+      } catch (cause) {
+        const msg = cause instanceof Error ? cause.message : "Error provant la clau de Google Gemini.";
+        return reply.code(400).send({ ok: false, error: msg });
+      }
+    }
 
     if (body.provider === "openai") {
       const candidateKey = typeof body.apiKey === "string" && body.apiKey.trim() !== ""
@@ -400,6 +465,6 @@ export function registerSettingsRoutes(
       }
     }
 
-    return reply.code(400).send({ error: "El proveïdor ha de ser 'openai', 'anthropic', 'deepseek' o 'documentai'." });
+    return reply.code(400).send({ error: "El proveïdor ha de ser 'gemini', 'openai', 'anthropic', 'deepseek' o 'documentai'." });
   });
 }

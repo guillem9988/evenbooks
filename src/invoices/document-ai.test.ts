@@ -22,6 +22,7 @@ vi.mock("../matching/reconcile.js", () => ({
 
 const DOCUMENT_AI: ExtractorConfig = {
   mode: "auto",
+  geminiApiKey: null,
   openaiApiKey: null,
   anthropicApiKey: null,
   deepseekApiKey: null,

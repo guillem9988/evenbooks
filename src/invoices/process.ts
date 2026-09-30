@@ -6,6 +6,7 @@ import { documentAiExtract } from "./document-ai.js";
 import {
   ExtractionError,
   extractInvoice,
+  extractInvoiceWithGemini,
   extractInvoiceWithAnthropic,
   extractInvoiceWithDeepseek,
   readLabeledText,
@@ -23,9 +24,10 @@ const OCR_GAP = "Tesseract did not find a usable total, date, or vendor.";
 
 export type ImageRecognizer = (bytes: Buffer) => Promise<string>;
 
-export type ExtractorName = "document-ai" | "openai" | "anthropic" | "deepseek" | "local";
+export type ExtractorName = "gemini" | "document-ai" | "openai" | "anthropic" | "deepseek" | "local";
 
 const LABELS: Record<ExtractorName, string> = {
+  gemini: "Google Gemini",
   "document-ai": "Document AI",
   openai: "OpenAI",
   anthropic: "Anthropic Claude",
@@ -33,8 +35,9 @@ const LABELS: Record<ExtractorName, string> = {
   local: "Local parser",
 };
 
-export const LOCAL_EXTRACTOR: ExtractorConfig = {
+export const LOCAL_EXTRACTOR: ExtractorConfig & { model?: string | null } = {
   mode: "local",
+  geminiApiKey: null,
   openaiApiKey: null,
   anthropicApiKey: null,
   deepseekApiKey: null,
@@ -42,28 +45,31 @@ export const LOCAL_EXTRACTOR: ExtractorConfig = {
 };
 
 /**
- * Document AI, then OpenAI, Anthropic, DeepSeek, then the local text parser and Tesseract. Providers without
- * credentials are skipped; an explicit INVOICE_EXTRACTOR only chooses where the chain starts.
+ * Gemini, Document AI, then OpenAI, Anthropic, DeepSeek, then the local text parser and Tesseract.
+ * Providers without credentials are skipped; an explicit INVOICE_EXTRACTOR only chooses where the chain starts.
  */
 export function extractorChain(config: ExtractorConfig): ExtractorName[] {
   const available: ExtractorName[] = [];
+  if (config.geminiApiKey !== null) available.push("gemini");
   if (config.documentAi !== null) available.push("document-ai");
   if (config.openaiApiKey !== null) available.push("openai");
   if (config.anthropicApiKey !== null) available.push("anthropic");
   if (config.deepseekApiKey !== null) available.push("deepseek");
   available.push("local");
   const start: ExtractorName =
-    config.mode === "documentai"
-      ? "document-ai"
-      : config.mode === "openai"
-        ? "openai"
-        : config.mode === "anthropic"
-          ? "anthropic"
-          : config.mode === "deepseek"
-            ? "deepseek"
-            : config.mode === "local"
-              ? "local"
-              : available[0]!;
+    config.mode === "gemini"
+      ? "gemini"
+      : config.mode === "documentai"
+        ? "document-ai"
+        : config.mode === "openai"
+          ? "openai"
+          : config.mode === "anthropic"
+            ? "anthropic"
+            : config.mode === "deepseek"
+              ? "deepseek"
+              : config.mode === "local"
+                ? "local"
+                : available[0]!;
   const index = available.indexOf(start);
   return index === -1 ? available : available.slice(index);
 }
@@ -71,6 +77,8 @@ export function extractorChain(config: ExtractorConfig): ExtractorName[] {
 export function resolveEffectiveExtractor(
   org: {
     extractorMode?: string | null;
+    extractorModel?: string | null;
+    geminiApiKey?: string | null;
     openaiApiKey?: string | null;
     anthropicApiKey?: string | null;
     deepseekApiKey?: string | null;
@@ -80,13 +88,18 @@ export function resolveEffectiveExtractor(
     documentAiCredentialsJson?: string | null;
   } | null | undefined,
   systemConfig: ExtractorConfig,
-): ExtractorConfig {
+): ExtractorConfig & { model?: string | null } {
   const customMode = org?.extractorMode?.trim().toLowerCase();
-  const validModes: InvoiceExtractorMode[] = ["auto", "documentai", "openai", "anthropic", "deepseek", "local"];
+  const validModes: InvoiceExtractorMode[] = ["auto", "gemini", "documentai", "openai", "anthropic", "deepseek", "local"];
   const mode: InvoiceExtractorMode =
     customMode && validModes.includes(customMode as InvoiceExtractorMode)
       ? (customMode as InvoiceExtractorMode)
       : systemConfig.mode;
+
+  const geminiApiKey =
+    org?.geminiApiKey && org.geminiApiKey.trim() !== ""
+      ? org.geminiApiKey.trim()
+      : systemConfig.geminiApiKey;
 
   const openaiApiKey =
     org?.openaiApiKey && org.openaiApiKey.trim() !== ""
@@ -122,7 +135,9 @@ export function resolveEffectiveExtractor(
     }
   }
 
-  return { mode, openaiApiKey, anthropicApiKey, deepseekApiKey, documentAi };
+  const model = org?.extractorModel?.trim() || null;
+
+  return { mode, geminiApiKey, openaiApiKey, anthropicApiKey, deepseekApiKey, documentAi, model };
 }
 
 export async function processInvoiceJob(
@@ -168,7 +183,7 @@ interface InvoiceFile {
 }
 
 async function extractWithChain(
-  config: ExtractorConfig,
+  config: ExtractorConfig & { model?: string | null },
   file: InvoiceFile,
   recognize: ImageRecognizer,
 ): Promise<ExtractedInvoice> {
@@ -191,10 +206,21 @@ async function extractWithChain(
 
 async function runExtractor(
   name: ExtractorName,
-  config: ExtractorConfig,
+  config: ExtractorConfig & { model?: string | null },
   file: InvoiceFile,
   recognize: ImageRecognizer,
 ): Promise<ExtractedInvoice> {
+  if (name === "gemini") {
+    if (config.geminiApiKey === null) {
+      throw new ExtractionError("GEMINI_API_KEY is not set.");
+    }
+    return extractInvoiceWithGemini({
+      text: file.text,
+      file: { mimeType: file.mimeType, bytes: file.bytes },
+      apiKey: config.geminiApiKey,
+      model: config.model,
+    });
+  }
   if (name === "document-ai") {
     if (config.documentAi === null) {
       throw new ExtractionError("Document AI is not configured.");
@@ -214,19 +240,19 @@ async function runExtractor(
       throw new ExtractionError("ANTHROPIC_API_KEY is not set.");
     }
     return file.text !== null
-      ? extractInvoiceWithAnthropic({ text: file.text, image: null, apiKey: config.anthropicApiKey })
-      : extractInvoiceWithAnthropic({ text: null, image: { mediaType: file.mimeType, bytes: file.bytes }, apiKey: config.anthropicApiKey });
+      ? extractInvoiceWithAnthropic({ text: file.text, image: null, apiKey: config.anthropicApiKey, model: config.model })
+      : extractInvoiceWithAnthropic({ text: null, image: { mediaType: file.mimeType, bytes: file.bytes }, apiKey: config.anthropicApiKey, model: config.model });
   }
   if (name === "deepseek") {
     if (config.deepseekApiKey === null) {
       throw new ExtractionError("DEEPSEEK_API_KEY is not set.");
     }
     if (file.text !== null) {
-      return extractInvoiceWithDeepseek({ text: file.text, apiKey: config.deepseekApiKey });
+      return extractInvoiceWithDeepseek({ text: file.text, apiKey: config.deepseekApiKey, model: config.model });
     }
     const image = file.isPdf ? await renderPdfPage(file.bytes) : file.bytes;
     const ocrText = await recognize(image);
-    return extractInvoiceWithDeepseek({ text: ocrText, apiKey: config.deepseekApiKey });
+    return extractInvoiceWithDeepseek({ text: ocrText, apiKey: config.deepseekApiKey, model: config.model });
   }
   if (file.text !== null) {
     return extractInvoice({ text: file.text, image: null, apiKey: null });

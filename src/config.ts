@@ -30,7 +30,7 @@ export interface WorkerConfig {
   stalledIntervalMs: number;
 }
 
-export type InvoiceExtractorMode = "auto" | "documentai" | "openai" | "anthropic" | "deepseek" | "local";
+export type InvoiceExtractorMode = "auto" | "gemini" | "documentai" | "openai" | "anthropic" | "deepseek" | "local";
 
 export interface ServiceAccountCredentials {
   client_email: string;
@@ -47,6 +47,7 @@ export interface DocumentAiConfig {
 
 export interface ExtractorConfig {
   mode: InvoiceExtractorMode;
+  geminiApiKey: string | null;
   openaiApiKey: string | null;
   anthropicApiKey: string | null;
   deepseekApiKey: string | null;
@@ -244,13 +245,14 @@ export function readExtractorConfig(env: Env): ExtractorConfig {
   const mode = readString(env, "INVOICE_EXTRACTOR", "auto").toLowerCase();
   if (
     mode !== "auto" &&
+    mode !== "gemini" &&
     mode !== "documentai" &&
     mode !== "openai" &&
     mode !== "anthropic" &&
     mode !== "deepseek" &&
     mode !== "local"
   ) {
-    throw new Error("INVOICE_EXTRACTOR must be auto, documentai, openai, anthropic, deepseek, or local");
+    throw new Error("INVOICE_EXTRACTOR must be auto, gemini, documentai, openai, anthropic, deepseek, or local");
   }
   const projectId = optionalString(env, "GOOGLE_CLOUD_PROJECT_ID");
   const processorId = optionalString(env, "DOCUMENT_AI_PROCESSOR_ID");
@@ -264,9 +266,13 @@ export function readExtractorConfig(env: Env): ExtractorConfig {
           credentials: readServiceAccount(credentialsJson),
         }
       : null;
+  const geminiApiKey = optionalString(env, "GEMINI_API_KEY") ?? optionalString(env, "GOOGLE_API_KEY");
   const openaiApiKey = optionalString(env, "OPENAI_API_KEY");
   const anthropicApiKey = optionalString(env, "ANTHROPIC_API_KEY");
   const deepseekApiKey = optionalString(env, "DEEPSEEK_API_KEY");
+  if (mode === "gemini" && geminiApiKey === null) {
+    throw new Error("INVOICE_EXTRACTOR=gemini needs GEMINI_API_KEY or GOOGLE_API_KEY");
+  }
   if (mode === "documentai" && documentAi === null) {
     throw new Error(
       "INVOICE_EXTRACTOR=documentai needs GOOGLE_CLOUD_PROJECT_ID, DOCUMENT_AI_PROCESSOR_ID, and GOOGLE_APPLICATION_CREDENTIALS_JSON",
@@ -281,7 +287,7 @@ export function readExtractorConfig(env: Env): ExtractorConfig {
   if (mode === "deepseek" && deepseekApiKey === null) {
     throw new Error("INVOICE_EXTRACTOR=deepseek needs DEEPSEEK_API_KEY");
   }
-  return { mode, openaiApiKey, anthropicApiKey, deepseekApiKey, documentAi };
+  return { mode, geminiApiKey, openaiApiKey, anthropicApiKey, deepseekApiKey, documentAi };
 }
 
 export function loadConfig(env: Env = process.env): AppConfig {

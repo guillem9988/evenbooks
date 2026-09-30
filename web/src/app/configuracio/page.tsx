@@ -31,8 +31,14 @@ import { useT } from "@/i18n";
 import { api, apiPath, getCustomApiUrl, setCustomApiUrl } from "@/lib/api";
 
 interface ExtractorSettingsPayload {
-  extractorMode: "auto" | "documentai" | "openai" | "anthropic" | "deepseek" | "local" | "system";
-  effectiveMode: "auto" | "documentai" | "openai" | "anthropic" | "deepseek" | "local";
+  extractorMode: "auto" | "gemini" | "documentai" | "openai" | "anthropic" | "deepseek" | "local" | "system";
+  effectiveMode: "auto" | "gemini" | "documentai" | "openai" | "anthropic" | "deepseek" | "local";
+  extractorModel: string | null;
+  gemini: {
+    configured: boolean;
+    keyPreview: string | null;
+    source: "organization" | "system" | "none";
+  };
   openai: {
     configured: boolean;
     keyPreview: string | null;
@@ -57,6 +63,7 @@ interface ExtractorSettingsPayload {
     source: "organization" | "system" | "none";
   };
   systemDefaults: {
+    hasGemini: boolean;
     hasOpenAi: boolean;
     hasAnthropic: boolean;
     hasDeepseek: boolean;
@@ -71,6 +78,7 @@ export default function SettingsPage() {
 
   // Form states
   const [mode, setMode] = useState<string>("auto");
+  const [geminiKey, setGeminiKey] = useState<string>("");
   const [openaiKey, setOpenaiKey] = useState<string>("");
   const [anthropicKey, setAnthropicKey] = useState<string>("");
   const [deepseekKey, setDeepseekKey] = useState<string>("");
@@ -81,6 +89,8 @@ export default function SettingsPage() {
   const [customApiUrl, setCustomApiUrlState] = useState<string>("");
 
   const [savingMode, setSavingMode] = useState(false);
+  const [savingGemini, setSavingGemini] = useState(false);
+  const [testingGemini, setTestingGemini] = useState(false);
   const [savingOpenAi, setSavingOpenAi] = useState(false);
   const [testingOpenAi, setTestingOpenAi] = useState(false);
   const [savingAnthropic, setSavingAnthropic] = useState(false);
@@ -154,6 +164,60 @@ export default function SettingsPage() {
       notifyError(cause, t("settings.saveFailed"));
     } finally {
       setSavingMode(false);
+    }
+  }
+
+  async function saveGemini() {
+    if (!geminiKey.trim() && !data?.gemini.keyPreview) return;
+    setSavingGemini(true);
+    try {
+      await api(`/organizations/${organizationId}/settings/extractor`, {
+        method: "PUT",
+        body: JSON.stringify({ geminiApiKey: geminiKey.trim() }),
+      });
+      setGeminiKey("");
+      notifySuccess(t("settings.saveSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("settings.saveFailed"));
+    } finally {
+      setSavingGemini(false);
+    }
+  }
+
+  async function clearGemini() {
+    if (!confirm(t("settings.clearConfirm"))) return;
+    setSavingGemini(true);
+    try {
+      await api(`/organizations/${organizationId}/settings/extractor`, {
+        method: "PUT",
+        body: JSON.stringify({ geminiApiKey: null }),
+      });
+      setGeminiKey("");
+      notifySuccess(t("settings.saveSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("settings.saveFailed"));
+    } finally {
+      setSavingGemini(false);
+    }
+  }
+
+  async function testGemini() {
+    setTestingGemini(true);
+    try {
+      const res = await api<{ ok: boolean; message?: string }>(`/organizations/${organizationId}/settings/extractor/test`, {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "gemini",
+          apiKey: geminiKey.trim() || undefined,
+        }),
+      });
+      notifySuccess(res.message || t("settings.testSuccess"));
+    } catch (cause) {
+      notifyError(cause, t("settings.testFailed"));
+    } finally {
+      setTestingGemini(false);
     }
   }
 
@@ -473,6 +537,20 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
+                  onClick={() => saveMode("gemini")}
+                  disabled={savingMode}
+                  className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
+                    mode === "gemini"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                      : "border-border hover:border-primary/40 bg-card"
+                  }`}
+                >
+                  <span className="font-semibold text-sm">{t("settings.modeGemini")}</span>
+                  <span className="mt-1 text-xs text-muted-foreground">{t("settings.modeGeminiHint")}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => saveMode("openai")}
                   disabled={savingMode}
                   className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
@@ -544,6 +622,86 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Card 2a: Google Gemini API */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <SparklesIcon className="size-5 text-blue-500 dark:text-blue-400" />
+                  <CardTitle>{t("settings.geminiTitle")}</CardTitle>
+                </div>
+                <CardDescription>{t("settings.geminiDescription")}</CardDescription>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-mono text-[11px]">
+                    gemini-2.5-flash (predeterminat)
+                  </Badge>
+                  <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
+                    gemini-2.5-pro
+                  </Badge>
+                </div>
+              </div>
+              {renderStatusBadge(data.gemini.source)}
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {data.gemini.keyPreview ? (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <KeyRoundIcon className="size-4 text-muted-foreground" />
+                    <span className="font-mono">{data.gemini.keyPreview}</span>
+                  </div>
+                  {data.gemini.source === "organization" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={savingGemini}
+                      onClick={clearGemini}
+                    >
+                      <Trash2Icon className="mr-1 size-3.5" />
+                      {t("settings.clearKey")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <Field
+                id="gemini-key"
+                label={t("settings.geminiKeyLabel")}
+                hint={t("settings.geminiKeyHint")}
+              >
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="gemini-key"
+                    type="password"
+                    autoComplete="off"
+                    value={geminiKey}
+                    placeholder={data.gemini.keyPreview ? "•••••••• (deixa en blanc per no canviar)" : t("settings.geminiKeyPlaceholder")}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={testingGemini || (!geminiKey.trim() && !data.gemini.configured)}
+                      onClick={testGemini}
+                    >
+                      {testingGemini ? t("settings.testing") : t("settings.testButton")}
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={savingGemini || !geminiKey.trim()}
+                      onClick={saveGemini}
+                    >
+                      {savingGemini ? t("settings.saving") : t("settings.saveButton")}
+                    </Button>
+                  </div>
+                </div>
+              </Field>
+            </CardContent>
+          </Card>
+
           {/* Card 2: OpenAI API Key */}
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -553,6 +711,14 @@ export default function SettingsPage() {
                   <CardTitle>{t("settings.openAiTitle")}</CardTitle>
                 </div>
                 <CardDescription>{t("settings.openAiDescription")}</CardDescription>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-mono text-[11px]">
+                    gpt-4o (recomanat)
+                  </Badge>
+                  <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
+                    gpt-4o-mini
+                  </Badge>
+                </div>
               </div>
               {renderStatusBadge(data.openai.source)}
             </CardHeader>
@@ -625,6 +791,14 @@ export default function SettingsPage() {
                   <CardTitle>{t("settings.anthropicTitle")}</CardTitle>
                 </div>
                 <CardDescription>{t("settings.anthropicDescription")}</CardDescription>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 font-mono text-[11px]">
+                    claude-3-7-sonnet-latest (recomanat)
+                  </Badge>
+                  <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
+                    claude-3-5-haiku-latest
+                  </Badge>
+                </div>
               </div>
               {renderStatusBadge(data.anthropic.source)}
             </CardHeader>
@@ -697,6 +871,14 @@ export default function SettingsPage() {
                   <CardTitle>{t("settings.deepseekTitle")}</CardTitle>
                 </div>
                 <CardDescription>{t("settings.deepseekDescription")}</CardDescription>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <Badge variant="outline" className="bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 font-mono text-[11px]">
+                    deepseek-chat (V3) (recomanat)
+                  </Badge>
+                  <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
+                    deepseek-reasoner (R1)
+                  </Badge>
+                </div>
               </div>
               {renderStatusBadge(data.deepseek.source)}
             </CardHeader>

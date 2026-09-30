@@ -112,6 +112,7 @@ function fromFields(fields: Record<string, string | null>, raw: unknown): Extrac
 async function openAiExtract(
   apiKey: string,
   source: { text: string } | { image: { mediaType: string; bytes: Buffer } },
+  model = "gpt-4o",
 ): Promise<Record<string, string | null>> {
   const client = new OpenAI({ apiKey });
   const content =
@@ -128,7 +129,7 @@ async function openAiExtract(
         ];
 
   const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: model || "gpt-4o",
     messages: [
       {
         role: "system",
@@ -172,6 +173,7 @@ function normalizeExtractedMap(parsed: Record<string, unknown>): Record<string, 
 async function anthropicExtract(
   apiKey: string,
   source: { text: string } | { image: { mediaType: string; bytes: Buffer } },
+  model = "claude-3-7-sonnet-latest",
 ): Promise<Record<string, string | null>> {
   const content =
     "text" in source
@@ -191,6 +193,7 @@ async function anthropicExtract(
           },
         ];
 
+  const targetModel = model?.trim() || "claude-3-7-sonnet-latest";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -199,7 +202,7 @@ async function anthropicExtract(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-3-5-haiku-20241022",
+      model: targetModel,
       max_tokens: 1024,
       system:
         "You are an expert invoice extraction tool. Extract invoice fields and respond ONLY with a raw JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent, is_simplified_receipt. Use null for missing fields. Do not include markdown codeblocks or explanation.",
@@ -222,6 +225,7 @@ async function anthropicExtract(
 async function deepseekExtract(
   apiKey: string,
   source: { text: string },
+  model = "deepseek-chat",
 ): Promise<Record<string, string | null>> {
   const client = new OpenAI({
     apiKey,
@@ -229,7 +233,7 @@ async function deepseekExtract(
   });
 
   const completion = await client.chat.completions.create({
-    model: "deepseek-chat",
+    model: model || "deepseek-chat",
     messages: [
       {
         role: "system",
@@ -249,25 +253,115 @@ async function deepseekExtract(
   return normalizeExtractedMap(parsed);
 }
 
+async function geminiExtract(
+  apiKey: string,
+  source: { text: string } | { inline: { mimeType: string; bytes: Buffer } },
+  model = "gemini-2.5-flash",
+): Promise<Record<string, string | null>> {
+  const parts: unknown[] = [];
+  if ("text" in source) {
+    parts.push({ text: `Extract invoice fields from this text:\n\n${source.text}` });
+  } else {
+    parts.push({
+      inline_data: {
+        mime_type: source.inline.mimeType,
+        data: source.inline.bytes.toString("base64"),
+      },
+    });
+    parts.push({
+      text: "Extract all invoice fields strictly into the requested JSON structure from this document.",
+    });
+  }
+
+  const targetModel = model?.trim() || "gemini-2.5-flash";
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [
+            {
+              text: "You are an expert invoice extraction AI. Extract invoice fields and return ONLY a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent (integer: 21, 10, 4, 0 or null), is_simplified_receipt (boolean). Never invent amounts. If unreadable, return null.",
+            },
+          ],
+        },
+        contents: [{ parts }],
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new ExtractionError(`Google Gemini API error (${res.status}): ${errorBody}`);
+  }
+
+  const data = (await res.json()) as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: string }>;
+      };
+    }>;
+  };
+
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const cleaned = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+  if (!cleaned) {
+    throw new ExtractionError("Google Gemini returned an empty invoice payload.");
+  }
+  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  return normalizeExtractedMap(parsed);
+}
+
+export async function extractInvoiceWithGemini(input: {
+  text: string | null;
+  file: { mimeType: string; bytes: Buffer } | null;
+  apiKey: string;
+  model?: string | null;
+}): Promise<ExtractedInvoice> {
+  const model = input.model?.trim() || "gemini-2.5-flash";
+  if (input.file !== null) {
+    return fromFields(await geminiExtract(input.apiKey, { inline: input.file }, model), {
+      source: "gemini-multimodal",
+      model,
+    });
+  }
+  if (input.text !== null && input.text.trim().length >= 20) {
+    return fromFields(await geminiExtract(input.apiKey, { text: input.text }, model), {
+      source: "gemini-text",
+      model,
+    });
+  }
+  throw new ExtractionError("No file or text available for Gemini extraction.");
+}
+
 export async function extractInvoiceWithAnthropic(input: {
   text: string | null;
   image: { mediaType: string; bytes: Buffer } | null;
   apiKey: string;
+  model?: string | null;
 }): Promise<ExtractedInvoice> {
+  const model = input.model?.trim() || "claude-3-7-sonnet-latest";
   if (input.text !== null && input.text.trim().length >= 20) {
-    return fromFields(await anthropicExtract(input.apiKey, { text: input.text }), { source: "anthropic-text" });
+    return fromFields(await anthropicExtract(input.apiKey, { text: input.text }, model), { source: "anthropic-text", model });
   }
   if (input.image === null) {
     throw new ExtractionError("File has no text and no page image for Anthropic vision.");
   }
-  return fromFields(await anthropicExtract(input.apiKey, { image: input.image }), { source: "anthropic-vision" });
+  return fromFields(await anthropicExtract(input.apiKey, { image: input.image }, model), { source: "anthropic-vision", model });
 }
 
 export async function extractInvoiceWithDeepseek(input: {
   text: string;
   apiKey: string;
+  model?: string | null;
 }): Promise<ExtractedInvoice> {
-  return fromFields(await deepseekExtract(input.apiKey, { text: input.text }), { source: "deepseek-text" });
+  const model = input.model?.trim() || "deepseek-chat";
+  return fromFields(await deepseekExtract(input.apiKey, { text: input.text }, model), { source: "deepseek-text", model });
 }
 
 function asString(value: unknown): string | null {
