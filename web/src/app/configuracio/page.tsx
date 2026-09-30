@@ -31,9 +31,19 @@ import { useT } from "@/i18n";
 import { api, apiPath, getCustomApiUrl, setCustomApiUrl } from "@/lib/api";
 
 interface ExtractorSettingsPayload {
-  extractorMode: "auto" | "documentai" | "openai" | "local" | "system";
-  effectiveMode: "auto" | "documentai" | "openai" | "local";
+  extractorMode: "auto" | "documentai" | "openai" | "anthropic" | "deepseek" | "local" | "system";
+  effectiveMode: "auto" | "documentai" | "openai" | "anthropic" | "deepseek" | "local";
   openai: {
+    configured: boolean;
+    keyPreview: string | null;
+    source: "organization" | "system" | "none";
+  };
+  anthropic: {
+    configured: boolean;
+    keyPreview: string | null;
+    source: "organization" | "system" | "none";
+  };
+  deepseek: {
     configured: boolean;
     keyPreview: string | null;
     source: "organization" | "system" | "none";
@@ -48,6 +58,8 @@ interface ExtractorSettingsPayload {
   };
   systemDefaults: {
     hasOpenAi: boolean;
+    hasAnthropic: boolean;
+    hasDeepseek: boolean;
     hasDocumentAi: boolean;
     mode: string;
   };
@@ -60,6 +72,8 @@ export default function SettingsPage() {
   // Form states
   const [mode, setMode] = useState<string>("auto");
   const [openaiKey, setOpenaiKey] = useState<string>("");
+  const [anthropicKey, setAnthropicKey] = useState<string>("");
+  const [deepseekKey, setDeepseekKey] = useState<string>("");
   const [docAiProject, setDocAiProject] = useState<string>("");
   const [docAiProcessor, setDocAiProcessor] = useState<string>("");
   const [docAiLocation, setDocAiLocation] = useState<string>("eu");
@@ -69,6 +83,10 @@ export default function SettingsPage() {
   const [savingMode, setSavingMode] = useState(false);
   const [savingOpenAi, setSavingOpenAi] = useState(false);
   const [testingOpenAi, setTestingOpenAi] = useState(false);
+  const [savingAnthropic, setSavingAnthropic] = useState(false);
+  const [testingAnthropic, setTestingAnthropic] = useState(false);
+  const [savingDeepseek, setSavingDeepseek] = useState(false);
+  const [testingDeepseek, setTestingDeepseek] = useState(false);
   const [savingDocAi, setSavingDocAi] = useState(false);
   const [testingDocAi, setTestingDocAi] = useState(false);
   const [testingApiServer, setTestingApiServer] = useState(false);
@@ -190,6 +208,114 @@ export default function SettingsPage() {
       notifyError(cause, t("settings.testFailed"));
     } finally {
       setTestingOpenAi(false);
+    }
+  }
+
+  async function saveAnthropic() {
+    if (!anthropicKey.trim() && !data?.anthropic.keyPreview) return;
+    setSavingAnthropic(true);
+    try {
+      await api(`/organizations/${organizationId}/settings/extractor`, {
+        method: "PUT",
+        body: JSON.stringify({ anthropicApiKey: anthropicKey.trim() }),
+      });
+      setAnthropicKey("");
+      notifySuccess(t("settings.saveSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("settings.saveFailed"));
+    } finally {
+      setSavingAnthropic(false);
+    }
+  }
+
+  async function clearAnthropic() {
+    if (!confirm(t("settings.clearConfirm"))) return;
+    setSavingAnthropic(true);
+    try {
+      await api(`/organizations/${organizationId}/settings/extractor`, {
+        method: "PUT",
+        body: JSON.stringify({ anthropicApiKey: null }),
+      });
+      setAnthropicKey("");
+      notifySuccess(t("settings.saveSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("settings.saveFailed"));
+    } finally {
+      setSavingAnthropic(false);
+    }
+  }
+
+  async function testAnthropic() {
+    setTestingAnthropic(true);
+    try {
+      const res = await api<{ ok: boolean; message?: string }>(`/organizations/${organizationId}/settings/extractor/test`, {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "anthropic",
+          apiKey: anthropicKey.trim() || undefined,
+        }),
+      });
+      notifySuccess(res.message || t("settings.testSuccess"));
+    } catch (cause) {
+      notifyError(cause, t("settings.testFailed"));
+    } finally {
+      setTestingAnthropic(false);
+    }
+  }
+
+  async function saveDeepseek() {
+    if (!deepseekKey.trim() && !data?.deepseek.keyPreview) return;
+    setSavingDeepseek(true);
+    try {
+      await api(`/organizations/${organizationId}/settings/extractor`, {
+        method: "PUT",
+        body: JSON.stringify({ deepseekApiKey: deepseekKey.trim() }),
+      });
+      setDeepseekKey("");
+      notifySuccess(t("settings.saveSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("settings.saveFailed"));
+    } finally {
+      setSavingDeepseek(false);
+    }
+  }
+
+  async function clearDeepseek() {
+    if (!confirm(t("settings.clearConfirm"))) return;
+    setSavingDeepseek(true);
+    try {
+      await api(`/organizations/${organizationId}/settings/extractor`, {
+        method: "PUT",
+        body: JSON.stringify({ deepseekApiKey: null }),
+      });
+      setDeepseekKey("");
+      notifySuccess(t("settings.saveSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("settings.saveFailed"));
+    } finally {
+      setSavingDeepseek(false);
+    }
+  }
+
+  async function testDeepseek() {
+    setTestingDeepseek(true);
+    try {
+      const res = await api<{ ok: boolean; message?: string }>(`/organizations/${organizationId}/settings/extractor/test`, {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "deepseek",
+          apiKey: deepseekKey.trim() || undefined,
+        }),
+      });
+      notifySuccess(res.message || t("settings.testSuccess"));
+    } catch (cause) {
+      notifyError(cause, t("settings.testFailed"));
+    } finally {
+      setTestingDeepseek(false);
     }
   }
 
@@ -361,6 +487,34 @@ export default function SettingsPage() {
 
                 <button
                   type="button"
+                  onClick={() => saveMode("anthropic")}
+                  disabled={savingMode}
+                  className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
+                    mode === "anthropic"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                      : "border-border hover:border-primary/40 bg-card"
+                  }`}
+                >
+                  <span className="font-semibold text-sm">{t("settings.modeAnthropic")}</span>
+                  <span className="mt-1 text-xs text-muted-foreground">{t("settings.modeAnthropicHint")}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => saveMode("deepseek")}
+                  disabled={savingMode}
+                  className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
+                    mode === "deepseek"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                      : "border-border hover:border-primary/40 bg-card"
+                  }`}
+                >
+                  <span className="font-semibold text-sm">{t("settings.modeDeepSeek")}</span>
+                  <span className="mt-1 text-xs text-muted-foreground">{t("settings.modeDeepSeekHint")}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => saveMode("documentai")}
                   disabled={savingMode}
                   className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
@@ -455,6 +609,150 @@ export default function SettingsPage() {
                       onClick={saveOpenAi}
                     >
                       {savingOpenAi ? t("settings.saving") : t("settings.saveButton")}
+                    </Button>
+                  </div>
+                </div>
+              </Field>
+            </CardContent>
+          </Card>
+
+          {/* Card 2b: Anthropic Claude */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <SparklesIcon className="size-5 text-amber-600 dark:text-amber-400" />
+                  <CardTitle>{t("settings.anthropicTitle")}</CardTitle>
+                </div>
+                <CardDescription>{t("settings.anthropicDescription")}</CardDescription>
+              </div>
+              {renderStatusBadge(data.anthropic.source)}
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {data.anthropic.keyPreview ? (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <KeyRoundIcon className="size-4 text-muted-foreground" />
+                    <span className="font-mono">{data.anthropic.keyPreview}</span>
+                  </div>
+                  {data.anthropic.source === "organization" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={savingAnthropic}
+                      onClick={clearAnthropic}
+                    >
+                      <Trash2Icon className="mr-1 size-3.5" />
+                      {t("settings.clearKey")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <Field
+                id="anthropic-key"
+                label={t("settings.anthropicKeyLabel")}
+                hint={t("settings.anthropicKeyHint")}
+              >
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="anthropic-key"
+                    type="password"
+                    autoComplete="off"
+                    value={anthropicKey}
+                    placeholder={data.anthropic.keyPreview ? "•••••••• (deixa en blanc per no canviar)" : t("settings.anthropicKeyPlaceholder")}
+                    onChange={(e) => setAnthropicKey(e.target.value)}
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={testingAnthropic || (!anthropicKey.trim() && !data.anthropic.configured)}
+                      onClick={testAnthropic}
+                    >
+                      {testingAnthropic ? t("settings.testing") : t("settings.testButton")}
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={savingAnthropic || !anthropicKey.trim()}
+                      onClick={saveAnthropic}
+                    >
+                      {savingAnthropic ? t("settings.saving") : t("settings.saveButton")}
+                    </Button>
+                  </div>
+                </div>
+              </Field>
+            </CardContent>
+          </Card>
+
+          {/* Card 2c: DeepSeek */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <BotIcon className="size-5 text-indigo-600 dark:text-indigo-400" />
+                  <CardTitle>{t("settings.deepseekTitle")}</CardTitle>
+                </div>
+                <CardDescription>{t("settings.deepseekDescription")}</CardDescription>
+              </div>
+              {renderStatusBadge(data.deepseek.source)}
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {data.deepseek.keyPreview ? (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <KeyRoundIcon className="size-4 text-muted-foreground" />
+                    <span className="font-mono">{data.deepseek.keyPreview}</span>
+                  </div>
+                  {data.deepseek.source === "organization" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={savingDeepseek}
+                      onClick={clearDeepseek}
+                    >
+                      <Trash2Icon className="mr-1 size-3.5" />
+                      {t("settings.clearKey")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <Field
+                id="deepseek-key"
+                label={t("settings.deepseekKeyLabel")}
+                hint={t("settings.deepseekKeyHint")}
+              >
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="deepseek-key"
+                    type="password"
+                    autoComplete="off"
+                    value={deepseekKey}
+                    placeholder={data.deepseek.keyPreview ? "•••••••• (deixa en blanc per no canviar)" : t("settings.deepseekKeyPlaceholder")}
+                    onChange={(e) => setDeepseekKey(e.target.value)}
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={testingDeepseek || (!deepseekKey.trim() && !data.deepseek.configured)}
+                      onClick={testDeepseek}
+                    >
+                      {testingDeepseek ? t("settings.testing") : t("settings.testButton")}
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={savingDeepseek || !deepseekKey.trim()}
+                      onClick={saveDeepseek}
+                    >
+                      {savingDeepseek ? t("settings.saving") : t("settings.saveButton")}
                     </Button>
                   </div>
                 </div>

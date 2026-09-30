@@ -147,6 +147,10 @@ async function openAiExtract(
     throw new ExtractionError("OpenAI returned an empty invoice payload.");
   }
   const parsed = JSON.parse(payload) as Record<string, string | number | boolean | null>;
+  return normalizeExtractedMap(parsed);
+}
+
+function normalizeExtractedMap(parsed: Record<string, unknown>): Record<string, string | null> {
   return {
     vendor_name: asString(parsed.vendor_name),
     vendor_tax_id: asString(parsed.vendor_tax_id),
@@ -160,11 +164,113 @@ async function openAiExtract(
       parsed.tax_rate_percent === null || parsed.tax_rate_percent === undefined
         ? null
         : String(parsed.tax_rate_percent),
-    is_simplified_receipt: parsed.is_simplified_receipt === true ? "true" : "false",
+    is_simplified_receipt:
+      parsed.is_simplified_receipt === true || parsed.is_simplified_receipt === "true" ? "true" : "false",
   };
 }
 
-function asString(value: string | number | boolean | null | undefined): string | null {
+async function anthropicExtract(
+  apiKey: string,
+  source: { text: string } | { image: { mediaType: string; bytes: Buffer } },
+): Promise<Record<string, string | null>> {
+  const content =
+    "text" in source
+      ? [{ type: "text" as const, text: `Extract all invoice fields strictly formatted as JSON from this text:\n\n${source.text}` }]
+      : [
+          {
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: (source.image.mediaType === "image/png" ? "image/png" : "image/jpeg") as "image/png" | "image/jpeg",
+              data: source.image.bytes.toString("base64"),
+            },
+          },
+          {
+            type: "text" as const,
+            text: "Extract all invoice fields strictly into the requested JSON schema from this invoice image.",
+          },
+        ];
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-3-5-haiku-20241022",
+      max_tokens: 1024,
+      system:
+        "You are an expert invoice extraction tool. Extract invoice fields and respond ONLY with a raw JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent, is_simplified_receipt. Use null for missing fields. Do not include markdown codeblocks or explanation.",
+      messages: [{ role: "user", content }],
+    }),
+  });
+
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new ExtractionError(`Anthropic API error (${res.status}): ${errorBody}`);
+  }
+
+  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  const rawText = data.content?.[0]?.text ?? "";
+  const cleaned = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+  return normalizeExtractedMap(parsed);
+}
+
+async function deepseekExtract(
+  apiKey: string,
+  source: { text: string },
+): Promise<Record<string, string | null>> {
+  const client = new OpenAI({
+    apiKey,
+    baseURL: "https://api.deepseek.com",
+  });
+
+  const completion = await client.chat.completions.create({
+    model: "deepseek-chat",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an expert invoice extraction tool. Extract invoice fields and respond ONLY with a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent, is_simplified_receipt. Use null for missing or unknown fields. Do not guess totals.",
+      },
+      { role: "user", content: `Extract invoice fields from this text:\n\n${source.text}` },
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  const payload = completion.choices[0]?.message.content;
+  if (!payload || payload.trim() === "") {
+    throw new ExtractionError("DeepSeek returned an empty invoice payload.");
+  }
+  const parsed = JSON.parse(payload) as Record<string, unknown>;
+  return normalizeExtractedMap(parsed);
+}
+
+export async function extractInvoiceWithAnthropic(input: {
+  text: string | null;
+  image: { mediaType: string; bytes: Buffer } | null;
+  apiKey: string;
+}): Promise<ExtractedInvoice> {
+  if (input.text !== null && input.text.trim().length >= 20) {
+    return fromFields(await anthropicExtract(input.apiKey, { text: input.text }), { source: "anthropic-text" });
+  }
+  if (input.image === null) {
+    throw new ExtractionError("File has no text and no page image for Anthropic vision.");
+  }
+  return fromFields(await anthropicExtract(input.apiKey, { image: input.image }), { source: "anthropic-vision" });
+}
+
+export async function extractInvoiceWithDeepseek(input: {
+  text: string;
+  apiKey: string;
+}): Promise<ExtractedInvoice> {
+  return fromFields(await deepseekExtract(input.apiKey, { text: input.text }), { source: "deepseek-text" });
+}
+
+function asString(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
   }

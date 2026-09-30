@@ -23,6 +23,8 @@ vi.mock("../matching/reconcile.js", () => ({
 const DOCUMENT_AI: ExtractorConfig = {
   mode: "auto",
   openaiApiKey: null,
+  anthropicApiKey: null,
+  deepseekApiKey: null,
   documentAi: {
     projectId: "matchinvoice-test",
     location: "eu",
@@ -159,17 +161,28 @@ describe("extractor order", () => {
     OPENAI_API_KEY: "sk-test",
   };
 
-  it("prefers Document AI, then OpenAI, then the local parser in auto", () => {
+  it("prefers Document AI, then OpenAI, then Anthropic, DeepSeek, and local parser in auto", () => {
     expect(extractorChain(readExtractorConfig(env))).toEqual(["document-ai", "openai", "local"]);
-    expect(extractorChain(readExtractorConfig({ OPENAI_API_KEY: "sk-test" }))).toEqual(["openai", "local"]);
+    expect(extractorChain(readExtractorConfig({ OPENAI_API_KEY: "sk-test", ANTHROPIC_API_KEY: "sk-ant", DEEPSEEK_API_KEY: "sk-deep" }))).toEqual([
+      "openai",
+      "anthropic",
+      "deepseek",
+      "local",
+    ]);
+    expect(extractorChain(readExtractorConfig({ ANTHROPIC_API_KEY: "sk-ant" }))).toEqual(["anthropic", "local"]);
+    expect(extractorChain(readExtractorConfig({ DEEPSEEK_API_KEY: "sk-deep" }))).toEqual(["deepseek", "local"]);
     expect(extractorChain(readExtractorConfig({}))).toEqual(["local"]);
   });
 
   it("starts where INVOICE_EXTRACTOR says and rejects missing credentials", () => {
     expect(extractorChain(readExtractorConfig({ ...env, INVOICE_EXTRACTOR: "openai" }))).toEqual(["openai", "local"]);
+    expect(extractorChain(readExtractorConfig({ ...env, ANTHROPIC_API_KEY: "sk-ant", INVOICE_EXTRACTOR: "anthropic" }))).toEqual(["anthropic", "local"]);
+    expect(extractorChain(readExtractorConfig({ ...env, DEEPSEEK_API_KEY: "sk-deep", INVOICE_EXTRACTOR: "deepseek" }))).toEqual(["deepseek", "local"]);
     expect(extractorChain(readExtractorConfig({ ...env, INVOICE_EXTRACTOR: "local" }))).toEqual(["local"]);
     expect(readExtractorConfig(env).documentAi?.location).toBe("eu");
     expect(() => readExtractorConfig({ INVOICE_EXTRACTOR: "documentai" })).toThrow(/GOOGLE_CLOUD_PROJECT_ID/);
+    expect(() => readExtractorConfig({ INVOICE_EXTRACTOR: "anthropic" })).toThrow(/ANTHROPIC_API_KEY/);
+    expect(() => readExtractorConfig({ INVOICE_EXTRACTOR: "deepseek" })).toThrow(/DEEPSEEK_API_KEY/);
     expect(() => readExtractorConfig({ ...env, GOOGLE_APPLICATION_CREDENTIALS_JSON: "{not json" })).toThrow(/full service account key JSON/);
     expect(() => readExtractorConfig({ INVOICE_EXTRACTOR: "magic" })).toThrow(/INVOICE_EXTRACTOR/);
   });

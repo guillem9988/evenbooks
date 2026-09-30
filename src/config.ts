@@ -30,7 +30,7 @@ export interface WorkerConfig {
   stalledIntervalMs: number;
 }
 
-export type InvoiceExtractorMode = "auto" | "documentai" | "openai" | "local";
+export type InvoiceExtractorMode = "auto" | "documentai" | "openai" | "anthropic" | "deepseek" | "local";
 
 export interface ServiceAccountCredentials {
   client_email: string;
@@ -48,6 +48,8 @@ export interface DocumentAiConfig {
 export interface ExtractorConfig {
   mode: InvoiceExtractorMode;
   openaiApiKey: string | null;
+  anthropicApiKey: string | null;
+  deepseekApiKey: string | null;
   documentAi: DocumentAiConfig | null;
 }
 
@@ -240,8 +242,15 @@ export function readServiceAccount(raw: string): ServiceAccountCredentials {
 
 export function readExtractorConfig(env: Env): ExtractorConfig {
   const mode = readString(env, "INVOICE_EXTRACTOR", "auto").toLowerCase();
-  if (mode !== "auto" && mode !== "documentai" && mode !== "openai" && mode !== "local") {
-    throw new Error("INVOICE_EXTRACTOR must be auto, documentai, openai, or local");
+  if (
+    mode !== "auto" &&
+    mode !== "documentai" &&
+    mode !== "openai" &&
+    mode !== "anthropic" &&
+    mode !== "deepseek" &&
+    mode !== "local"
+  ) {
+    throw new Error("INVOICE_EXTRACTOR must be auto, documentai, openai, anthropic, deepseek, or local");
   }
   const projectId = optionalString(env, "GOOGLE_CLOUD_PROJECT_ID");
   const processorId = optionalString(env, "DOCUMENT_AI_PROCESSOR_ID");
@@ -256,6 +265,8 @@ export function readExtractorConfig(env: Env): ExtractorConfig {
         }
       : null;
   const openaiApiKey = optionalString(env, "OPENAI_API_KEY");
+  const anthropicApiKey = optionalString(env, "ANTHROPIC_API_KEY");
+  const deepseekApiKey = optionalString(env, "DEEPSEEK_API_KEY");
   if (mode === "documentai" && documentAi === null) {
     throw new Error(
       "INVOICE_EXTRACTOR=documentai needs GOOGLE_CLOUD_PROJECT_ID, DOCUMENT_AI_PROCESSOR_ID, and GOOGLE_APPLICATION_CREDENTIALS_JSON",
@@ -264,7 +275,13 @@ export function readExtractorConfig(env: Env): ExtractorConfig {
   if (mode === "openai" && openaiApiKey === null) {
     throw new Error("INVOICE_EXTRACTOR=openai needs OPENAI_API_KEY");
   }
-  return { mode, openaiApiKey, documentAi };
+  if (mode === "anthropic" && anthropicApiKey === null) {
+    throw new Error("INVOICE_EXTRACTOR=anthropic needs ANTHROPIC_API_KEY");
+  }
+  if (mode === "deepseek" && deepseekApiKey === null) {
+    throw new Error("INVOICE_EXTRACTOR=deepseek needs DEEPSEEK_API_KEY");
+  }
+  return { mode, openaiApiKey, anthropicApiKey, deepseekApiKey, documentAi };
 }
 
 export function loadConfig(env: Env = process.env): AppConfig {

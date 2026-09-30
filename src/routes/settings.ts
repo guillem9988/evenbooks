@@ -38,6 +38,8 @@ export function registerSettingsRoutes(
         id: true,
         extractorMode: true,
         openaiApiKey: true,
+        anthropicApiKey: true,
+        deepseekApiKey: true,
         documentAiProjectId: true,
         documentAiProcessorId: true,
         documentAiLocation: true,
@@ -50,6 +52,8 @@ export function registerSettingsRoutes(
     }
 
     const customOpenAi = Boolean(org.openaiApiKey && org.openaiApiKey.trim() !== "");
+    const customAnthropic = Boolean(org.anthropicApiKey && org.anthropicApiKey.trim() !== "");
+    const customDeepseek = Boolean(org.deepseekApiKey && org.deepseekApiKey.trim() !== "");
     const customDocAi = Boolean(
       org.documentAiProcessorId &&
       org.documentAiProjectId &&
@@ -64,6 +68,16 @@ export function registerSettingsRoutes(
         keyPreview: customOpenAi ? maskKey(org.openaiApiKey!) : (systemConfig.openaiApiKey ? maskKey(systemConfig.openaiApiKey) : null),
         source: customOpenAi ? "organization" : (systemConfig.openaiApiKey ? "system" : "none"),
       },
+      anthropic: {
+        configured: customAnthropic || Boolean(systemConfig.anthropicApiKey),
+        keyPreview: customAnthropic ? maskKey(org.anthropicApiKey!) : (systemConfig.anthropicApiKey ? maskKey(systemConfig.anthropicApiKey) : null),
+        source: customAnthropic ? "organization" : (systemConfig.anthropicApiKey ? "system" : "none"),
+      },
+      deepseek: {
+        configured: customDeepseek || Boolean(systemConfig.deepseekApiKey),
+        keyPreview: customDeepseek ? maskKey(org.deepseekApiKey!) : (systemConfig.deepseekApiKey ? maskKey(systemConfig.deepseekApiKey) : null),
+        source: customDeepseek ? "organization" : (systemConfig.deepseekApiKey ? "system" : "none"),
+      },
       documentAi: {
         configured: customDocAi || Boolean(systemConfig.documentAi),
         projectId: org.documentAiProjectId ?? systemConfig.documentAi?.projectId ?? null,
@@ -74,6 +88,8 @@ export function registerSettingsRoutes(
       },
       systemDefaults: {
         hasOpenAi: Boolean(systemConfig.openaiApiKey),
+        hasAnthropic: Boolean(systemConfig.anthropicApiKey),
+        hasDeepseek: Boolean(systemConfig.deepseekApiKey),
         hasDocumentAi: Boolean(systemConfig.documentAi),
         mode: systemConfig.mode,
       },
@@ -94,6 +110,8 @@ export function registerSettingsRoutes(
     const body = request.body as {
       extractorMode?: unknown;
       openaiApiKey?: unknown;
+      anthropicApiKey?: unknown;
+      deepseekApiKey?: unknown;
       documentAiProjectId?: unknown;
       documentAiProcessorId?: unknown;
       documentAiLocation?: unknown;
@@ -103,6 +121,8 @@ export function registerSettingsRoutes(
     const updateData: {
       extractorMode?: string | null;
       openaiApiKey?: string | null;
+      anthropicApiKey?: string | null;
+      deepseekApiKey?: string | null;
       documentAiProjectId?: string | null;
       documentAiProcessorId?: string | null;
       documentAiLocation?: string | null;
@@ -111,8 +131,20 @@ export function registerSettingsRoutes(
 
     if (body.extractorMode !== undefined) {
       const mode = typeof body.extractorMode === "string" ? body.extractorMode.trim().toLowerCase() : null;
-      if (mode !== null && mode !== "" && mode !== "system" && mode !== "auto" && mode !== "documentai" && mode !== "openai" && mode !== "local") {
-        return reply.code(400).send({ error: "El mode d'extracció ha de ser: system, auto, documentai, openai o local" });
+      if (
+        mode !== null &&
+        mode !== "" &&
+        mode !== "system" &&
+        mode !== "auto" &&
+        mode !== "documentai" &&
+        mode !== "openai" &&
+        mode !== "anthropic" &&
+        mode !== "deepseek" &&
+        mode !== "local"
+      ) {
+        return reply.code(400).send({
+          error: "El mode d'extracció ha de ser: system, auto, documentai, openai, anthropic, deepseek o local",
+        });
       }
       updateData.extractorMode = mode === "system" || mode === "" ? null : mode;
     }
@@ -122,6 +154,22 @@ export function registerSettingsRoutes(
         updateData.openaiApiKey = null;
       } else if (typeof body.openaiApiKey === "string") {
         updateData.openaiApiKey = body.openaiApiKey.trim();
+      }
+    }
+
+    if (body.anthropicApiKey !== undefined) {
+      if (body.anthropicApiKey === null || body.anthropicApiKey === "") {
+        updateData.anthropicApiKey = null;
+      } else if (typeof body.anthropicApiKey === "string") {
+        updateData.anthropicApiKey = body.anthropicApiKey.trim();
+      }
+    }
+
+    if (body.deepseekApiKey !== undefined) {
+      if (body.deepseekApiKey === null || body.deepseekApiKey === "") {
+        updateData.deepseekApiKey = null;
+      } else if (typeof body.deepseekApiKey === "string") {
+        updateData.deepseekApiKey = body.deepseekApiKey.trim();
       }
     }
 
@@ -164,6 +212,8 @@ export function registerSettingsRoutes(
         id: true,
         extractorMode: true,
         openaiApiKey: true,
+        anthropicApiKey: true,
+        deepseekApiKey: true,
         documentAiProjectId: true,
         documentAiProcessorId: true,
         documentAiLocation: true,
@@ -172,6 +222,8 @@ export function registerSettingsRoutes(
     });
 
     const customOpenAi = Boolean(updated.openaiApiKey && updated.openaiApiKey.trim() !== "");
+    const customAnthropic = Boolean(updated.anthropicApiKey && updated.anthropicApiKey.trim() !== "");
+    const customDeepseek = Boolean(updated.deepseekApiKey && updated.deepseekApiKey.trim() !== "");
     const customDocAi = Boolean(
       updated.documentAiProcessorId &&
       updated.documentAiProjectId &&
@@ -186,6 +238,16 @@ export function registerSettingsRoutes(
         keyPreview: customOpenAi ? maskKey(updated.openaiApiKey!) : (systemConfig.openaiApiKey ? maskKey(systemConfig.openaiApiKey) : null),
         source: customOpenAi ? "organization" : (systemConfig.openaiApiKey ? "system" : "none"),
       },
+      anthropic: {
+        configured: customAnthropic || Boolean(systemConfig.anthropicApiKey),
+        keyPreview: customAnthropic ? maskKey(updated.anthropicApiKey!) : (systemConfig.anthropicApiKey ? maskKey(systemConfig.anthropicApiKey) : null),
+        source: customAnthropic ? "organization" : (systemConfig.anthropicApiKey ? "system" : "none"),
+      },
+      deepseek: {
+        configured: customDeepseek || Boolean(systemConfig.deepseekApiKey),
+        keyPreview: customDeepseek ? maskKey(updated.deepseekApiKey!) : (systemConfig.deepseekApiKey ? maskKey(systemConfig.deepseekApiKey) : null),
+        source: customDeepseek ? "organization" : (systemConfig.deepseekApiKey ? "system" : "none"),
+      },
       documentAi: {
         configured: customDocAi || Boolean(systemConfig.documentAi),
         projectId: updated.documentAiProjectId ?? systemConfig.documentAi?.projectId ?? null,
@@ -196,6 +258,8 @@ export function registerSettingsRoutes(
       },
       systemDefaults: {
         hasOpenAi: Boolean(systemConfig.openaiApiKey),
+        hasAnthropic: Boolean(systemConfig.anthropicApiKey),
+        hasDeepseek: Boolean(systemConfig.deepseekApiKey),
         hasDocumentAi: Boolean(systemConfig.documentAi),
         mode: systemConfig.mode,
       },
@@ -239,6 +303,53 @@ export function registerSettingsRoutes(
         return reply.send({ ok: true, message: "Connexió amb OpenAI confirmada correctament." });
       } catch (cause) {
         const msg = cause instanceof Error ? cause.message : "Error provant la clau d'OpenAI.";
+        return reply.code(400).send({ ok: false, error: msg });
+      }
+    }
+
+    if (body.provider === "anthropic") {
+      const candidateKey = typeof body.apiKey === "string" && body.apiKey.trim() !== ""
+        ? body.apiKey.trim()
+        : (org.anthropicApiKey ?? systemConfig.anthropicApiKey);
+
+      if (!candidateKey) {
+        return reply.code(400).send({ ok: false, error: "No hi ha cap clau d'Anthropic per provar." });
+      }
+
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/models", {
+          headers: {
+            "x-api-key": candidateKey,
+            "anthropic-version": "2023-06-01",
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          return reply.code(400).send({ ok: false, error: `Error d'Anthropic (${res.status}): ${err}` });
+        }
+        return reply.send({ ok: true, message: "Connexió amb Anthropic confirmada correctament." });
+      } catch (cause) {
+        const msg = cause instanceof Error ? cause.message : "Error provant la clau d'Anthropic.";
+        return reply.code(400).send({ ok: false, error: msg });
+      }
+    }
+
+    if (body.provider === "deepseek") {
+      const candidateKey = typeof body.apiKey === "string" && body.apiKey.trim() !== ""
+        ? body.apiKey.trim()
+        : (org.deepseekApiKey ?? systemConfig.deepseekApiKey);
+
+      if (!candidateKey) {
+        return reply.code(400).send({ ok: false, error: "No hi ha cap clau de DeepSeek per provar." });
+      }
+
+      try {
+        const client = new OpenAI({ apiKey: candidateKey, baseURL: "https://api.deepseek.com", timeout: 8000 });
+        await client.models.list();
+        return reply.send({ ok: true, message: "Connexió amb DeepSeek confirmada correctament." });
+      } catch (cause) {
+        const msg = cause instanceof Error ? cause.message : "Error provant la clau de DeepSeek.";
         return reply.code(400).send({ ok: false, error: msg });
       }
     }
@@ -289,6 +400,6 @@ export function registerSettingsRoutes(
       }
     }
 
-    return reply.code(400).send({ error: "El proveïdor ha de ser 'openai' o 'documentai'." });
+    return reply.code(400).send({ error: "El proveïdor ha de ser 'openai', 'anthropic', 'deepseek' o 'documentai'." });
   });
 }

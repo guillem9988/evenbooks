@@ -2,9 +2,22 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckIcon, FileDownIcon, FilePenLineIcon, MoreHorizontalIcon, PlusIcon, UndoIcon, UsersIcon } from "lucide-react";
+import {
+  CheckIcon,
+  FileDownIcon,
+  FilePenLineIcon,
+  MailIcon,
+  MoreHorizontalIcon,
+  PlusIcon,
+  SearchIcon,
+  UndoIcon,
+  UsersIcon,
+  XIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DocumentDialog, nextSeries, type CatalogPick, type Contact, type DocumentPayload } from "@/components/document-form";
 import { useOrganizationId } from "@/components/shell";
@@ -13,6 +26,7 @@ import {
   CardsSkeleton,
   EmptyState,
   ErrorBanner,
+  Field,
   FormDialog,
   KpiCard,
   PageHeader,
@@ -55,6 +69,15 @@ export default function IncomePage() {
   const [rectifying, setRectifying] = useState<IssuedInvoice | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const [emailingInvoice, setEmailingInvoice] = useState<IssuedInvoice | null>(null);
+  const [emailRecipient, setEmailRecipient] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const load = useCallback(async (): Promise<IncomeData> => {
     const [people, issued, products] = await Promise.all([
@@ -77,13 +100,63 @@ export default function IncomePage() {
   }, []);
 
   const visible = invoices.filter((invoice) => {
-    if (filter === "UNPAID") return invoice.status === "UNPAID";
-    if (filter === "PAID") return invoice.status === "PAID";
-    if (filter === "RECTIFICATIVA") return invoice.rectifiesSeriesNumber !== null;
+    if (filter === "UNPAID" && invoice.status !== "UNPAID") return false;
+    if (filter === "PAID" && invoice.status !== "PAID") return false;
+    if (filter === "RECTIFICATIVA" && invoice.rectifiesSeriesNumber === null) return false;
+
+    if (dateFrom && invoice.invoiceDate < dateFrom) return false;
+    if (dateTo && invoice.invoiceDate > dateTo) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchSeries = invoice.seriesNumber.toLowerCase().includes(q);
+      const matchContact = invoice.contactName.toLowerCase().includes(q);
+      const matchAmount = (Number(invoice.totalAmountCents) / 100).toFixed(2).includes(q);
+      if (!matchSeries && !matchContact && !matchAmount) return false;
+    }
+
     return true;
   });
   const unpaid = invoices.filter((invoice) => invoice.status === "UNPAID");
   const rectifiedSeries = new Set(invoices.map((invoice) => invoice.rectifiesSeriesNumber).filter(Boolean));
+
+  function startEmailInvoice(invoice: IssuedInvoice) {
+    const contact = contacts.find((c) => c.legalName === invoice.contactName);
+    setEmailingInvoice(invoice);
+    setEmailRecipient(contact?.email ?? "");
+    setEmailSubject(`Factura ${invoice.seriesNumber}`);
+    setEmailMessage(
+      `Benvolgut/da ${invoice.contactName},\n\nUs adjuntem la factura ${invoice.seriesNumber} en format PDF per un import de ${euros(invoice.totalAmountCents)}.\n\nAtentament,`
+    );
+  }
+
+  async function sendInvoiceEmail() {
+    if (!emailingInvoice) return;
+    setSendingEmail(true);
+    try {
+      const res = await api<{ ok: boolean; simulated?: boolean; message?: string }>(
+        `/organizations/${organizationId}/issued-invoices/${emailingInvoice.id}/send-email`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            recipientEmail: emailRecipient.trim(),
+            subject: emailSubject.trim() || undefined,
+            message: emailMessage.trim() || undefined,
+          }),
+        }
+      );
+      notifySuccess(
+        res.simulated
+          ? t("income.sendEmailSimulated")
+          : t("income.sendEmailSuccess", { email: emailRecipient.trim() })
+      );
+      setEmailingInvoice(null);
+    } catch (cause) {
+      notifyError(cause, t("income.sendEmailFailed"));
+    } finally {
+      setSendingEmail(false);
+    }
+  }
 
   async function create(payload: DocumentPayload) {
     await api(`/organizations/${organizationId}/issued-invoices`, {
@@ -136,6 +209,7 @@ export default function IncomePage() {
       canRectify={invoice.rectifiesSeriesNumber === null && !rectifiedSeries.has(invoice.seriesNumber)}
       onPaid={() => togglePaid(invoice)}
       onRectify={() => setRectifying(invoice)}
+      onEmail={() => startEmailInvoice(invoice)}
     />
   );
 
@@ -206,6 +280,62 @@ export default function IncomePage() {
                   ["RECTIFICATIVA", t("income.rectificatives"), invoices.filter((invoice) => invoice.rectifiesSeriesNumber !== null).length],
                 ]}
               />
+
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="relative flex-1">
+                  <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t("income.searchPlaceholder")}
+                    className="pl-8 text-sm"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>{t("income.dateFrom")}:</span>
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="h-8 w-auto text-xs"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>{t("income.dateTo")}:</span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="h-8 w-auto text-xs"
+                    />
+                  </div>
+                  {searchQuery || dateFrom || dateTo ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setDateFrom("");
+                        setDateTo("");
+                      }}
+                      className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <XIcon className="mr-1 size-3.5" />
+                      {t("income.clearFilters")}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              {(searchQuery || dateFrom || dateTo || filter !== "ALL") ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("income.showingCount", { visible: visible.length, total: invoices.length })}
+                </p>
+              ) : null}
+
               {visible.length === 0 ? (
                 <EmptyState title={t("income.emptyFilter")} />
               ) : (
@@ -318,6 +448,54 @@ export default function IncomePage() {
           </dl>
         ) : null}
       </FormDialog>
+
+      <Dialog open={emailingInvoice !== null} onOpenChange={(open) => !open && setEmailingInvoice(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("income.sendEmailTitle")}</DialogTitle>
+            <DialogDescription>{t("income.sendEmailDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">{t("income.sendEmailAttachment")}:</span>
+              <span className="font-mono font-medium">{emailingInvoice?.seriesNumber}.pdf</span>
+            </div>
+            <Field id="email-recipient" label={t("income.sendEmailRecipient")}>
+              <Input
+                id="email-recipient"
+                type="email"
+                value={emailRecipient}
+                onChange={(e) => setEmailRecipient(e.target.value)}
+                placeholder="client@exemple.cat"
+              />
+            </Field>
+            <Field id="email-subject" label={t("income.sendEmailSubject")}>
+              <Input
+                id="email-subject"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+              />
+            </Field>
+            <Field id="email-message" label={t("income.sendEmailMessage")}>
+              <textarea
+                id="email-message"
+                rows={5}
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </Field>
+          </div>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setEmailingInvoice(null)} disabled={sendingEmail}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="button" onClick={sendInvoiceEmail} disabled={sendingEmail || !emailRecipient.trim()}>
+              {sendingEmail ? t("common.wait") : t("income.sendEmailSubmit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -329,6 +507,7 @@ function InvoiceActions({
   canRectify,
   onPaid,
   onRectify,
+  onEmail,
 }: {
   invoice: IssuedInvoice;
   organizationId: string;
@@ -336,6 +515,7 @@ function InvoiceActions({
   canRectify: boolean;
   onPaid: () => void;
   onRectify: () => void;
+  onEmail: () => void;
 }) {
   const t = useT();
   return (
@@ -360,6 +540,9 @@ function InvoiceActions({
         <DropdownMenuContent align="end">
           <DropdownMenuItem render={<a href={apiPath(`/organizations/${organizationId}/issued-invoices/${invoice.id}.pdf`)} />}>
             <FileDownIcon /> {t("income.downloadPdf")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onEmail}>
+            <MailIcon /> {t("income.sendEmail")}
           </DropdownMenuItem>
           {canRectify ? (
             <DropdownMenuItem onClick={onRectify}>

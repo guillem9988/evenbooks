@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { IssuedInvoiceStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
 import { renderIssuedInvoicePdf } from "../billing/invoice-pdf.js";
+import { sendEmail } from "../lib/mailer.js";
+import { formatEuroDisplay } from "../lib/money.js";
 import { cents, day, findOrganization, parseDay, readUuid } from "./org-params.js";
 import { readLines } from "./document-lines.js";
 
@@ -127,6 +129,111 @@ export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: Prisma
       .header("content-type", "application/pdf")
       .header("content-disposition", `attachment; filename="${filename}"`)
       .send(Buffer.from(pdf));
+  });
+
+  app.post("/organizations/:organizationId/issued-invoices/:invoiceId/send-email", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const invoiceId = readUuid((request.params as { invoiceId?: string }).invoiceId, "invoiceId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (invoiceId instanceof Error) {
+      return reply.code(400).send({ error: invoiceId.message });
+    }
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { legalName: true, taxId: true },
+    });
+    if (organization === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+
+    const invoice = await prisma.issuedInvoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: issuedInclude,
+    });
+    if (invoice === null) {
+      return reply.code(404).send({ error: "Issued invoice not found" });
+    }
+
+    const body = (request.body as {
+      recipientEmail?: unknown;
+      subject?: unknown;
+      message?: unknown;
+    }) ?? {};
+
+    const targetEmail =
+      typeof body.recipientEmail === "string" && body.recipientEmail.trim() !== ""
+        ? body.recipientEmail.trim()
+        : invoice.contact.email?.trim();
+
+    if (!targetEmail || !targetEmail.includes("@")) {
+      return reply.code(400).send({ error: "El client no té cap adreça de correu electrònic vàlida." });
+    }
+
+    const pdf = await renderIssuedInvoicePdf({
+      legalName: organization.legalName,
+      taxId: organization.taxId,
+      contactName: invoice.contact.legalName,
+      contactTaxId: invoice.contact.taxId,
+      seriesNumber: invoice.seriesNumber,
+      invoiceDate: day(invoice.invoiceDate) ?? "",
+      rectifiesSeriesNumber: invoice.rectifies?.seriesNumber ?? null,
+      baseAmountCents: invoice.baseAmountCents,
+      taxAmountCents: invoice.taxAmountCents,
+      totalAmountCents: invoice.totalAmountCents,
+      lines: invoice.lines,
+    });
+
+    const filename = `${invoice.seriesNumber.replace(/[^\w.-]+/g, "_")}.pdf`;
+    const subject =
+      typeof body.subject === "string" && body.subject.trim() !== ""
+        ? body.subject.trim()
+        : `Factura ${invoice.seriesNumber} - ${organization.legalName}`;
+
+    const defaultBody = [
+      `Benvolgut/da ${invoice.contact.legalName},`,
+      "",
+      `Us adjuntem en format PDF la factura número ${invoice.seriesNumber} amb data ${day(invoice.invoiceDate) ?? ""} per un import total de ${formatEuroDisplay(invoice.totalAmountCents)}.`,
+      "",
+      "Gràcies per la vostra confiança.",
+      "",
+      `Atentament,`,
+      organization.legalName,
+    ].join("\n");
+
+    const message =
+      typeof body.message === "string" && body.message.trim() !== ""
+        ? body.message.trim()
+        : defaultBody;
+
+    try {
+      const emailResult = await sendEmail({
+        to: targetEmail,
+        subject,
+        text: message,
+        attachments: [
+          {
+            filename,
+            content: Buffer.from(pdf),
+            contentType: "application/pdf",
+          },
+        ],
+      });
+
+      return reply.send({
+        ok: true,
+        simulated: emailResult.simulated ?? false,
+        recipient: targetEmail,
+        message: emailResult.simulated
+          ? "Correu simulat amb èxit (mode desenvolupament sense RESEND_API_KEY)."
+          : "Factura enviada correctament per correu electrònic.",
+      });
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : "Error enviant la factura per correu.";
+      return reply.code(500).send({ error: msg });
+    }
   });
 
   app.post("/organizations/:organizationId/issued-invoices/:invoiceId/rectify", async (request, reply) => {

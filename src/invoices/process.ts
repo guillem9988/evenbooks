@@ -3,7 +3,14 @@ import type { ExtractorConfig, InvoiceExtractorMode } from "../config.js";
 import { readServiceAccount } from "../config.js";
 import { reconcileOrganization } from "../matching/reconcile.js";
 import { documentAiExtract } from "./document-ai.js";
-import { ExtractionError, extractInvoice, readLabeledText, type ExtractedInvoice } from "./extract.js";
+import {
+  ExtractionError,
+  extractInvoice,
+  extractInvoiceWithAnthropic,
+  extractInvoiceWithDeepseek,
+  readLabeledText,
+  type ExtractedInvoice,
+} from "./extract.js";
 import { recognizeImage, renderPdfPage } from "./ocr.js";
 import { extractPdfText } from "./pdf-text.js";
 
@@ -16,33 +23,47 @@ const OCR_GAP = "Tesseract did not find a usable total, date, or vendor.";
 
 export type ImageRecognizer = (bytes: Buffer) => Promise<string>;
 
-export type ExtractorName = "document-ai" | "openai" | "local";
+export type ExtractorName = "document-ai" | "openai" | "anthropic" | "deepseek" | "local";
 
 const LABELS: Record<ExtractorName, string> = {
   "document-ai": "Document AI",
   openai: "OpenAI",
+  anthropic: "Anthropic Claude",
+  deepseek: "DeepSeek",
   local: "Local parser",
 };
 
-export const LOCAL_EXTRACTOR: ExtractorConfig = { mode: "local", openaiApiKey: null, documentAi: null };
+export const LOCAL_EXTRACTOR: ExtractorConfig = {
+  mode: "local",
+  openaiApiKey: null,
+  anthropicApiKey: null,
+  deepseekApiKey: null,
+  documentAi: null,
+};
 
 /**
- * Document AI, then OpenAI, then the local text parser and Tesseract. Providers without
+ * Document AI, then OpenAI, Anthropic, DeepSeek, then the local text parser and Tesseract. Providers without
  * credentials are skipped; an explicit INVOICE_EXTRACTOR only chooses where the chain starts.
  */
 export function extractorChain(config: ExtractorConfig): ExtractorName[] {
   const available: ExtractorName[] = [];
   if (config.documentAi !== null) available.push("document-ai");
   if (config.openaiApiKey !== null) available.push("openai");
+  if (config.anthropicApiKey !== null) available.push("anthropic");
+  if (config.deepseekApiKey !== null) available.push("deepseek");
   available.push("local");
   const start: ExtractorName =
     config.mode === "documentai"
       ? "document-ai"
       : config.mode === "openai"
         ? "openai"
-        : config.mode === "local"
-          ? "local"
-          : available[0]!;
+        : config.mode === "anthropic"
+          ? "anthropic"
+          : config.mode === "deepseek"
+            ? "deepseek"
+            : config.mode === "local"
+              ? "local"
+              : available[0]!;
   const index = available.indexOf(start);
   return index === -1 ? available : available.slice(index);
 }
@@ -51,6 +72,8 @@ export function resolveEffectiveExtractor(
   org: {
     extractorMode?: string | null;
     openaiApiKey?: string | null;
+    anthropicApiKey?: string | null;
+    deepseekApiKey?: string | null;
     documentAiProjectId?: string | null;
     documentAiProcessorId?: string | null;
     documentAiLocation?: string | null;
@@ -59,7 +82,7 @@ export function resolveEffectiveExtractor(
   systemConfig: ExtractorConfig,
 ): ExtractorConfig {
   const customMode = org?.extractorMode?.trim().toLowerCase();
-  const validModes: InvoiceExtractorMode[] = ["auto", "documentai", "openai", "local"];
+  const validModes: InvoiceExtractorMode[] = ["auto", "documentai", "openai", "anthropic", "deepseek", "local"];
   const mode: InvoiceExtractorMode =
     customMode && validModes.includes(customMode as InvoiceExtractorMode)
       ? (customMode as InvoiceExtractorMode)
@@ -69,6 +92,16 @@ export function resolveEffectiveExtractor(
     org?.openaiApiKey && org.openaiApiKey.trim() !== ""
       ? org.openaiApiKey.trim()
       : systemConfig.openaiApiKey;
+
+  const anthropicApiKey =
+    org?.anthropicApiKey && org.anthropicApiKey.trim() !== ""
+      ? org.anthropicApiKey.trim()
+      : systemConfig.anthropicApiKey;
+
+  const deepseekApiKey =
+    org?.deepseekApiKey && org.deepseekApiKey.trim() !== ""
+      ? org.deepseekApiKey.trim()
+      : systemConfig.deepseekApiKey;
 
   let documentAi = systemConfig.documentAi;
   if (
@@ -89,7 +122,7 @@ export function resolveEffectiveExtractor(
     }
   }
 
-  return { mode, openaiApiKey, documentAi };
+  return { mode, openaiApiKey, anthropicApiKey, deepseekApiKey, documentAi };
 }
 
 export async function processInvoiceJob(
@@ -175,6 +208,25 @@ async function runExtractor(
     return file.text !== null
       ? extractInvoice({ text: file.text, image: null, apiKey: config.openaiApiKey })
       : extractInvoice({ text: null, image: { mediaType: file.mimeType, bytes: file.bytes }, apiKey: config.openaiApiKey });
+  }
+  if (name === "anthropic") {
+    if (config.anthropicApiKey === null) {
+      throw new ExtractionError("ANTHROPIC_API_KEY is not set.");
+    }
+    return file.text !== null
+      ? extractInvoiceWithAnthropic({ text: file.text, image: null, apiKey: config.anthropicApiKey })
+      : extractInvoiceWithAnthropic({ text: null, image: { mediaType: file.mimeType, bytes: file.bytes }, apiKey: config.anthropicApiKey });
+  }
+  if (name === "deepseek") {
+    if (config.deepseekApiKey === null) {
+      throw new ExtractionError("DEEPSEEK_API_KEY is not set.");
+    }
+    if (file.text !== null) {
+      return extractInvoiceWithDeepseek({ text: file.text, apiKey: config.deepseekApiKey });
+    }
+    const image = file.isPdf ? await renderPdfPage(file.bytes) : file.bytes;
+    const ocrText = await recognize(image);
+    return extractInvoiceWithDeepseek({ text: ocrText, apiKey: config.deepseekApiKey });
   }
   if (file.text !== null) {
     return extractInvoice({ text: file.text, image: null, apiKey: null });

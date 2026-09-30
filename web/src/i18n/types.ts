@@ -234,6 +234,22 @@ export type Dict = {
     downloadPdf: string;
     createRectificativa: string;
     ofSeries: string;
+    sendEmail: string;
+    sendEmailTitle: string;
+    sendEmailDescription: string;
+    sendEmailRecipient: string;
+    sendEmailSubject: string;
+    sendEmailMessage: string;
+    sendEmailAttachment: string;
+    sendEmailSubmit: string;
+    sendEmailSuccess: string;
+    sendEmailSimulated: string;
+    sendEmailFailed: string;
+    searchPlaceholder: string;
+    dateFrom: string;
+    dateTo: string;
+    clearFilters: string;
+    showingCount: string;
   };
   quotes: {
     title: string;
@@ -396,6 +412,11 @@ export type Dict = {
     deleteExpenseFailed: string;
     manualEntry: string;
     calculateVat: string;
+    searchPlaceholder: string;
+    dateFrom: string;
+    dateTo: string;
+    clearFilters: string;
+    showingCount: string;
   };
   bank: {
     title: string;
@@ -556,6 +577,10 @@ export type Dict = {
     modeDocAiHint: string;
     modeOpenAi: string;
     modeOpenAiHint: string;
+    modeAnthropic: string;
+    modeAnthropicHint: string;
+    modeDeepSeek: string;
+    modeDeepSeekHint: string;
     modeLocal: string;
     modeLocalHint: string;
     modeSystem: string;
@@ -565,6 +590,16 @@ export type Dict = {
     openAiKeyLabel: string;
     openAiKeyPlaceholder: string;
     openAiKeyHint: string;
+    anthropicTitle: string;
+    anthropicDescription: string;
+    anthropicKeyLabel: string;
+    anthropicKeyPlaceholder: string;
+    anthropicKeyHint: string;
+    deepseekTitle: string;
+    deepseekDescription: string;
+    deepseekKeyLabel: string;
+    deepseekKeyPlaceholder: string;
+    deepseekKeyHint: string;
     docAiTitle: string;
     docAiDescription: string;
     docAiProjectLabel: string;

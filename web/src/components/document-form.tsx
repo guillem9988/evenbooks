@@ -12,6 +12,8 @@ export interface Contact {
   id: string;
   legalName: string;
   role: string;
+  email?: string | null;
+  taxId?: string;
 }
 
 export interface DocumentPayload {

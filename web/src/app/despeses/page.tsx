@@ -8,10 +8,13 @@ import {
   ReceiptIcon,
   RefreshCwIcon,
   RotateCcwIcon,
+  SearchIcon,
   SparklesIcon,
   UploadIcon,
+  XIcon,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EditExpenseDialog, type ExpenseItem } from "@/components/edit-expense-dialog";
 import { useOrganizationId } from "@/components/shell";
@@ -52,6 +55,9 @@ export default function ExpensesPage() {
   const [uploading, setUploading] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
 
@@ -74,8 +80,26 @@ export default function ExpensesPage() {
   const uncategorized = parsed.filter((row) => row.expenseCategory === null);
   const failed = rows.filter((row) => row.status === "FAILED");
   const pending = rows.filter((row) => row.status === "UPLOADED" || row.status === "PROCESSING");
-  const visible =
+
+  const filteredByStatus =
     filter === "UNCATEGORIZED" ? uncategorized : filter === "FAILED" ? failed : filter === "PENDING" ? pending : rows;
+
+  const visible = filteredByStatus.filter((row) => {
+    if (dateFrom && row.invoiceDate && row.invoiceDate < dateFrom) return false;
+    if (dateTo && row.invoiceDate && row.invoiceDate > dateTo) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchVendor = row.vendorName?.toLowerCase().includes(q) ?? false;
+      const matchTaxId = row.vendorTaxId?.toLowerCase().includes(q) ?? false;
+      const matchNumber = row.invoiceNumber?.toLowerCase().includes(q) ?? false;
+      const matchFile = row.originalFilename?.toLowerCase().includes(q) ?? false;
+      const matchAmount = row.totalAmountCents ? (Number(row.totalAmountCents) / 100).toFixed(2).includes(q) : false;
+      if (!matchVendor && !matchTaxId && !matchNumber && !matchFile && !matchAmount) return false;
+    }
+
+    return true;
+  });
 
   async function upload(files: File[]) {
     const form = new FormData();
@@ -173,6 +197,62 @@ export default function ExpensesPage() {
                   ["FAILED", t("expenses.unreadable"), failed.length],
                 ]}
               />
+
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="relative flex-1">
+                  <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t("expenses.searchPlaceholder")}
+                    className="pl-8 text-sm"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>{t("expenses.dateFrom")}:</span>
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="h-8 w-auto text-xs"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>{t("expenses.dateTo")}:</span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="h-8 w-auto text-xs"
+                    />
+                  </div>
+                  {searchQuery || dateFrom || dateTo ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setDateFrom("");
+                        setDateTo("");
+                      }}
+                      className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <XIcon className="mr-1 size-3.5" />
+                      {t("expenses.clearFilters")}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              {(searchQuery || dateFrom || dateTo || filter !== "ALL") ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("expenses.showingCount", { visible: visible.length, total: rows.length })}
+                </p>
+              ) : null}
+
               {inFlight ? (
                 <p className="text-sm text-muted-foreground" role="status">
                   {t("expenses.analyzingNote")}
