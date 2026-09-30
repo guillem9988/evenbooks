@@ -56,7 +56,7 @@ export async function buildServer(config: AppConfig) {
   await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 20 } });
 
-  registerAuthRoutes(app, database.prisma, config.cookie, config.registration);
+  registerAuthRoutes(app, database.prisma, config.cookie, config.registration, config.googleOAuth, config.webOrigins);
   registerOrganizationGuard(app, database.prisma);
   registerHealthRoutes(app, {
     checkPostgres: () => checkPostgres(database.prisma),

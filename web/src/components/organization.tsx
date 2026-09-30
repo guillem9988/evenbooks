@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 
 interface SessionUser {
   displayName: string;
+  avatarUrl?: string | null;
   organizations: Array<{ id: string; legalName: string }>;
 }
 
@@ -13,6 +14,7 @@ interface OrganizationState {
   organizationId: string;
   organizationName: string;
   displayName: string;
+  avatarUrl: string | null;
   select: (id: string, name: string) => void;
   refresh: () => Promise<boolean>;
   clear: () => void;
@@ -25,17 +27,20 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [organizationId, setOrganizationId] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const session = await api<SessionUser>("/auth/session");
       const organization = session.organizations[0];
       setDisplayName(session.displayName);
+      setAvatarUrl(session.avatarUrl ?? null);
       setOrganizationId(organization?.id ?? "");
       setOrganizationName(organization?.legalName ?? "");
       return true;
     } catch {
       setDisplayName("");
+      setAvatarUrl(null);
       setOrganizationId("");
       setOrganizationName("");
       return false;
@@ -55,12 +60,13 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   const clear = useCallback(() => {
     setDisplayName("");
+    setAvatarUrl(null);
     setOrganizationId("");
     setOrganizationName("");
   }, []);
 
   return (
-    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, displayName, select, refresh, clear }}>
+    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, displayName, avatarUrl, select, refresh, clear }}>
       {children}
     </OrganizationContext.Provider>
   );

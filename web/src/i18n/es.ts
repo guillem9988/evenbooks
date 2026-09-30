@@ -138,6 +138,11 @@ export const es: Dict = {
     cookieDropped: "El servidor te ha autenticado, pero el navegador no ha guardado la sesión. Prueba otro navegador.",
     loginFailed: "No se ha podido entrar",
     registerFailed: "No se ha podido crear la cuenta",
+    googleButton: "Continuar con Google",
+    googleOr: "o continúa con correo",
+    googleSuccess: "Sesión iniciada con Google.",
+    googleFailed: "No se ha podido iniciar sesión con Google",
+    googleNotConfigured: "El login con Google requiere configurar GOOGLE_CLIENT_ID en el servidor.",
   },
   home: {
     title: "Inicio",

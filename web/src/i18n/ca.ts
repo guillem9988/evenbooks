@@ -138,6 +138,11 @@ export const ca: Dict = {
     cookieDropped: "El servidor t’ha autenticat, però el navegador no ha desat la sessió. Prova un altre navegador.",
     loginFailed: "No s’ha pogut entrar",
     registerFailed: "No s’ha pogut crear el compte",
+    googleButton: "Continua amb Google",
+    googleOr: "o continua amb correu",
+    googleSuccess: "Sessió iniciada amb Google.",
+    googleFailed: "No s’ha pogut iniciar sessió amb Google",
+    googleNotConfigured: "El login amb Google requereix configurar GOOGLE_CLIENT_ID al servidor.",
   },
   home: {
     title: "Inici",

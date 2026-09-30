@@ -207,16 +207,25 @@ function Navigation({ className, onNavigate }: { className?: string; onNavigate?
 }
 
 function Account({ className }: { className?: string }) {
-  const { organizationId, organizationName, displayName, clear } = useOrganization();
+  const { organizationId, organizationName, displayName, avatarUrl, clear } = useOrganization();
   const t = useT();
   const [busy, setBusy] = useState(false);
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <LanguageSwitcher className="h-8 w-full text-xs" />
       <div className="flex items-center gap-2">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase" aria-hidden>
-          {(displayName || organizationName || "?").slice(0, 1)}
-        </span>
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            referrerPolicy="no-referrer"
+            className="size-8 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase" aria-hidden>
+            {(displayName || organizationName || "?").slice(0, 1)}
+          </span>
+        )}
         <div className="min-w-0 flex-1 leading-tight">
           <p className="truncate text-sm font-medium" title={organizationId}>
             {organizationName || t("common.organization")}

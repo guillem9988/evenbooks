@@ -59,6 +59,11 @@ export interface RegistrationConfig {
   inviteCode: string | null;
 }
 
+export interface GoogleOAuthConfig {
+  clientId: string | null;
+  clientSecret: string | null;
+}
+
 export interface AppConfig {
   nodeEnv: string;
   host: string;
@@ -72,6 +77,7 @@ export interface AppConfig {
   webOrigins: string[];
   cookie: CookieConfig;
   registration: RegistrationConfig;
+  googleOAuth: GoogleOAuthConfig;
   trustProxy: boolean;
   worker: WorkerConfig;
 }
@@ -208,18 +214,36 @@ export function readRegistrationConfig(env: Env, production: boolean): Registrat
   };
 }
 
+export interface RegistrationStatus {
+  open: boolean;
+  inviteRequired: boolean;
+  googleAuthEnabled: boolean;
+  googleClientId: string | null;
+}
+
 /**
  * Open registration, or invite-only when public sign-up is off and REGISTRATION_INVITE_CODE is set.
  * Never returns the invite code itself.
  */
-export function registrationStatus(registration: RegistrationConfig): { open: boolean; inviteRequired: boolean } {
+export function registrationStatus(
+  registration: RegistrationConfig,
+  googleOAuth?: GoogleOAuthConfig,
+): RegistrationStatus {
+  let open = false;
+  let inviteRequired = false;
   if (registration.allowPublic) {
-    return { open: true, inviteRequired: false };
+    open = true;
+    inviteRequired = false;
+  } else if (registration.inviteCode !== null) {
+    open = true;
+    inviteRequired = true;
   }
-  if (registration.inviteCode !== null) {
-    return { open: true, inviteRequired: true };
-  }
-  return { open: false, inviteRequired: false };
+  return {
+    open,
+    inviteRequired,
+    googleAuthEnabled: Boolean(googleOAuth?.clientId),
+    googleClientId: googleOAuth?.clientId ?? null,
+  };
 }
 
 export function readServiceAccount(raw: string): ServiceAccountCredentials {
@@ -323,6 +347,10 @@ export function loadConfig(env: Env = process.env): AppConfig {
     webOrigins: readWebOrigins(optionalString(env, "WEB_ORIGIN"), production),
     cookie: readCookieConfig(env, production),
     registration: readRegistrationConfig(env, production),
+    googleOAuth: {
+      clientId: optionalString(env, "GOOGLE_CLIENT_ID"),
+      clientSecret: optionalString(env, "GOOGLE_CLIENT_SECRET"),
+    },
     trustProxy: readBoolean(env, "TRUST_PROXY", production),
     worker: {
       drainDelaySeconds: readInteger(env, "BULLMQ_DRAIN_DELAY_SECONDS", 5, 1, 3600),

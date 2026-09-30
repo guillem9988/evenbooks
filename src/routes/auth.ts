@@ -1,9 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 import {
   registrationStatus,
   type CookieConfig,
+  type GoogleOAuthConfig,
   type RegistrationConfig,
 } from "../config.js";
 import {
@@ -30,18 +31,127 @@ function inviteMatches(expected: string, provided: unknown): boolean {
   return timingSafeEqual(left, right);
 }
 
+export interface GoogleTokenPayload {
+  iss?: string;
+  sub?: string;
+  aud?: string;
+  email?: string;
+  email_verified?: string | boolean;
+  name?: string;
+  picture?: string;
+}
+
+export async function verifyGoogleCredential(
+  credential: string,
+  expectedClientId?: string | null,
+): Promise<{ email: string; sub: string; name: string; picture: string | null } | Error> {
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error_description?: string; error?: string };
+      return new Error(err.error_description || err.error || "Invalid Google credential");
+    }
+    const data = (await res.json()) as GoogleTokenPayload;
+    if (!data.email || (data.email_verified !== "true" && data.email_verified !== true)) {
+      return new Error("Google email not verified");
+    }
+    if (!data.sub) {
+      return new Error("Invalid Google token: missing sub");
+    }
+    if (expectedClientId && data.aud && data.aud !== expectedClientId) {
+      return new Error("Google token client ID mismatch");
+    }
+    return {
+      email: data.email.trim().toLowerCase(),
+      sub: data.sub,
+      name: data.name?.trim() || data.email.split("@")[0] || "Usuari",
+      picture: data.picture || null,
+    };
+  } catch (cause) {
+    return new Error(`Failed to verify Google token: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+}
+
+async function findOrCreateGoogleUser(
+  prisma: PrismaClient,
+  verified: { email: string; sub: string; name: string; picture: string | null },
+  registration: RegistrationConfig,
+  googleOAuth: GoogleOAuthConfig,
+  inviteCode?: unknown,
+): Promise<{ user: any; isNew: boolean } | Error> {
+  let user = await prisma.user.findFirst({
+    where: {
+      OR: [{ googleId: verified.sub }, { email: verified.email }],
+    },
+    include: { memberships: { include: { organization: true } } },
+  });
+
+  if (user !== null) {
+    if (!user.googleId || !user.avatarUrl) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleId: user.googleId ?? verified.sub,
+          avatarUrl: user.avatarUrl ?? verified.picture,
+        },
+        include: { memberships: { include: { organization: true } } },
+      });
+    }
+    return { user, isNew: false };
+  }
+
+  const status = registrationStatus(registration, googleOAuth);
+  if (!status.open) {
+    return new Error("Registration is disabled");
+  }
+  if (status.inviteRequired && !inviteMatches(registration.inviteCode!, inviteCode)) {
+    return new Error("Invalid invite code");
+  }
+
+  const createdUser = await prisma.user.create({
+    data: {
+      email: verified.email,
+      displayName: verified.name.slice(0, 255),
+      googleId: verified.sub,
+      avatarUrl: verified.picture ? verified.picture.slice(0, 1024) : null,
+      passwordHash: null,
+      memberships: {
+        create: {
+          organization: {
+            create: {
+              legalName: verified.name.slice(0, 255) || "La meva organització",
+              taxId: "PENDENT",
+            },
+          },
+        },
+      },
+    },
+    include: { memberships: { include: { organization: true } } },
+  });
+
+  return { user: createdUser, isNew: true };
+}
+
+function resolveCallbackUri(request: FastifyRequest): string {
+  const proto = (request.headers["x-forwarded-proto"] as string) || "http";
+  const host = (request.headers["x-forwarded-host"] as string) || request.headers.host || "127.0.0.1:43123";
+  return `${proto}://${host}/auth/google/callback`;
+}
+
 export function registerAuthRoutes(
   app: FastifyInstance,
   prisma: PrismaClient,
   cookie: CookieConfig = LOCAL_COOKIE,
   registration: RegistrationConfig = { allowPublic: true, inviteCode: null },
+  googleOAuth: GoogleOAuthConfig = { clientId: null, clientSecret: null },
+  _webOrigins: string[] = [],
 ): void {
   app.get("/auth/registration", async (_request, reply) => {
-    return reply.send(registrationStatus(registration));
+    return reply.send(registrationStatus(registration, googleOAuth));
   });
 
   app.post("/auth/register", async (request, reply) => {
-    const status = registrationStatus(registration);
+    const status = registrationStatus(registration, googleOAuth);
     if (!status.open) {
       return reply.code(403).send({ error: "Registration is disabled" });
     }
@@ -105,6 +215,7 @@ export function registerAuthRoutes(
       id: user.id,
       email: user.email,
       displayName: user.displayName,
+      avatarUrl: null,
       organization: { id: organization.id, legalName: organization.legalName, taxId: organization.taxId },
     });
   });
@@ -120,11 +231,136 @@ export function registerAuthRoutes(
       where: { email },
       include: { memberships: { include: { organization: true } } },
     });
-    if (user === null || !(await checkPassword(password, user.passwordHash))) {
+    if (user === null || !user.passwordHash || !(await checkPassword(password, user.passwordHash))) {
       return reply.code(401).send({ error: "Invalid email or password" });
     }
     await openSession(prisma, reply, user.id, cookie);
     return reply.send(presentUser(user));
+  });
+
+  app.post("/auth/google", async (request, reply) => {
+    const body = request.body as { credential?: unknown; inviteCode?: unknown };
+    if (typeof body?.credential !== "string" || body.credential.trim() === "") {
+      return reply.code(400).send({ error: "Google credential is required" });
+    }
+    const verified = await verifyGoogleCredential(body.credential.trim(), googleOAuth.clientId);
+    if (verified instanceof Error) {
+      return reply.code(401).send({ error: verified.message });
+    }
+    const result = await findOrCreateGoogleUser(prisma, verified, registration, googleOAuth, body.inviteCode);
+    if (result instanceof Error) {
+      const code = result.message === "Invalid invite code" || result.message === "Registration is disabled" ? 403 : 400;
+      return reply.code(code).send({ error: result.message });
+    }
+    await openSession(prisma, reply, result.user.id, cookie);
+    return reply.code(result.isNew ? 201 : 200).send(presentUser(result.user));
+  });
+
+  app.get("/auth/google", async (request, reply) => {
+    if (!googleOAuth.clientId) {
+      return reply.code(400).send({
+        error: "Google OAuth is not configured on the server. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
+      });
+    }
+    const query = request.query as { redirect?: string; inviteCode?: string };
+    const state = randomBytes(24).toString("hex");
+    const statePayload = JSON.stringify({
+      state,
+      redirect: query.redirect || "/",
+      inviteCode: query.inviteCode || null,
+    });
+    reply.setCookie("mi_oauth_state", statePayload, {
+      ...sessionCookieAttributes(cookie),
+      maxAge: 600,
+    });
+
+    const callbackUri = resolveCallbackUri(request);
+    const params = new URLSearchParams({
+      client_id: googleOAuth.clientId,
+      redirect_uri: callbackUri,
+      response_type: "code",
+      scope: "openid email profile",
+      state,
+      prompt: "select_account",
+    });
+
+    return reply.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  });
+
+  app.get("/auth/google/callback", async (request, reply) => {
+    const query = request.query as { code?: string; state?: string; error?: string };
+    const stateCookie = request.cookies["mi_oauth_state"];
+    reply.clearCookie("mi_oauth_state", sessionCookieAttributes(cookie));
+
+    let redirectTarget = "/";
+    let inviteCode: string | null = null;
+    let expectedState: string | null = null;
+
+    if (stateCookie) {
+      try {
+        const parsed = JSON.parse(stateCookie);
+        expectedState = parsed.state;
+        redirectTarget = parsed.redirect || "/";
+        inviteCode = parsed.inviteCode || null;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (query.error) {
+      return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent(query.error)}`);
+    }
+
+    if (!query.code || !query.state || query.state !== expectedState) {
+      return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent("Invalid OAuth state")}`);
+    }
+
+    if (!googleOAuth.clientId || !googleOAuth.clientSecret) {
+      return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent("Google OAuth not configured")}`);
+    }
+
+    const callbackUri = resolveCallbackUri(request);
+
+    try {
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code: query.code,
+          client_id: googleOAuth.clientId,
+          client_secret: googleOAuth.clientSecret,
+          redirect_uri: callbackUri,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        const err = (await tokenRes.json().catch(() => ({}))) as { error_description?: string };
+        return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent(err.error_description || "Token exchange failed")}`);
+      }
+
+      const tokenData = (await tokenRes.json()) as { id_token?: string; access_token?: string };
+      if (!tokenData.id_token) {
+        return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent("No id_token returned from Google")}`);
+      }
+
+      const verified = await verifyGoogleCredential(tokenData.id_token, googleOAuth.clientId);
+      if (verified instanceof Error) {
+        return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent(verified.message)}`);
+      }
+
+      const result = await findOrCreateGoogleUser(prisma, verified, registration, googleOAuth, inviteCode);
+      if (result instanceof Error) {
+        return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent(result.message)}`);
+      }
+
+      await openSession(prisma, reply, result.user.id, cookie);
+      return reply.redirect(redirectTarget);
+    } catch (cause) {
+      return reply.redirect(
+        `${redirectTarget}?auth_error=${encodeURIComponent(cause instanceof Error ? cause.message : "Authentication failed")}`,
+      );
+    }
   });
 
   app.post("/auth/logout", async (request, reply) => {
@@ -156,12 +392,14 @@ function presentUser(user: {
   id: string;
   email: string;
   displayName: string;
+  avatarUrl?: string | null;
   memberships: Array<{ organization: { id: string; legalName: string; taxId: string } }>;
 }) {
   return {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
+    avatarUrl: user.avatarUrl ?? null,
     organizations: user.memberships.map((membership) => ({
       id: membership.organization.id,
       legalName: membership.organization.legalName,

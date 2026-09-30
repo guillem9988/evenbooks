@@ -138,6 +138,11 @@ export const en: Dict = {
     cookieDropped: "Server signed you in, but the browser didn’t keep the session. Try another browser.",
     loginFailed: "Couldn’t log in",
     registerFailed: "Couldn’t create the account",
+    googleButton: "Continue with Google",
+    googleOr: "or continue with email",
+    googleSuccess: "Signed in with Google.",
+    googleFailed: "Could not sign in with Google",
+    googleNotConfigured: "Google sign-in requires GOOGLE_CLIENT_ID configured on the server.",
   },
   home: {
     title: "Home",

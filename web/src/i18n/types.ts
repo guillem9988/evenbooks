@@ -143,6 +143,11 @@ export type Dict = {
     cookieDropped: string;
     loginFailed: string;
     registerFailed: string;
+    googleButton: string;
+    googleOr: string;
+    googleSuccess: string;
+    googleFailed: string;
+    googleNotConfigured: string;
   };
   home: {
     title: string;

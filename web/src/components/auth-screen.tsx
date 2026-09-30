@@ -9,11 +9,39 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { useOrganization } from "@/components/organization";
 import { EMAIL, ErrorBanner, Field, Segmented, messageOf, notifySuccess } from "@/components/ui-kit";
 import { useI18n, useT } from "@/i18n";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, apiPath } from "@/lib/api";
 
 type Mode = "login" | "register";
 type Errors = Partial<Record<"email" | "password" | "displayName" | "legalName" | "taxId" | "inviteCode", string>>;
-type RegistrationInfo = { open: boolean; inviteRequired: boolean };
+type RegistrationInfo = {
+  open: boolean;
+  inviteRequired: boolean;
+  googleAuthEnabled?: boolean;
+  googleClientId?: string | null;
+};
+
+function GoogleLogo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.03h3.88c2.27-2.09 3.66-5.17 3.66-9.12z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.03c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.13C3.25 21.3 7.31 24 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.28 14.29c-.25-.72-.38-1.49-.38-2.29s.13-1.57.38-2.29V6.57H1.27C.46 8.2 0 10.04 0 12s.46 3.8 1.27 5.43l4.01-3.14z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.57l4.01 3.14c.95-2.83 3.6-4.96 6.72-4.96z"
+      />
+    </svg>
+  );
+}
 
 export function AuthScreen() {
   const { refresh } = useOrganization();
@@ -31,6 +59,9 @@ export function AuthScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const googleClientId =
+    registration?.googleClientId || (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID : null) || null;
+
   useEffect(() => {
     let cancelled = false;
     void api<RegistrationInfo>("/auth/registration")
@@ -44,6 +75,95 @@ export function AuthScreen() {
       cancelled = true;
     };
   }, []);
+
+  // Read URL search params for error message (e.g. from Google OAuth callback)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const authErr = params.get("auth_error");
+      if (authErr) {
+        setError(authErr);
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+  }, []);
+
+  // Initialize Google Identity Services (One Tap / Credential)
+  useEffect(() => {
+    if (!googleClientId) return;
+    const scriptId = "google-gsi-client";
+
+    const onScriptLoad = () => {
+      const g = (window as unknown as { google?: { accounts?: { id?: any } } }).google;
+      if (g?.accounts?.id) {
+        g.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: (res: { credential?: string }) => {
+            if (res.credential) {
+              void handleGoogleCredential(res.credential);
+            }
+          },
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        });
+      }
+    };
+
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement("script");
+      script.id = scriptId;
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.onload = onScriptLoad;
+      document.body.appendChild(script);
+    } else {
+      onScriptLoad();
+    }
+  }, [googleClientId]);
+
+  async function handleGoogleCredential(credential: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/auth/google", {
+        method: "POST",
+        body: JSON.stringify({
+          credential,
+          inviteCode: inviteCode.trim() || undefined,
+        }),
+      });
+      notifySuccess(t("auth.googleSuccess"));
+      const signedIn = await refresh();
+      if (!signedIn) {
+        throw new ApiError(t("auth.cookieDropped"), 0);
+      }
+    } catch (cause) {
+      setError(messageOf(cause, t("auth.googleFailed")));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleGoogleClick() {
+    setError(null);
+    if (!googleClientId) {
+      setError(t("auth.googleNotConfigured"));
+      return;
+    }
+    const g = (window as unknown as { google?: { accounts?: { id?: any } } }).google;
+    if (g?.accounts?.id) {
+      g.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          const qs = inviteCode.trim() ? `?inviteCode=${encodeURIComponent(inviteCode.trim())}` : "";
+          window.location.href = apiPath(`/auth/google${qs}`);
+        }
+      });
+    } else {
+      const qs = inviteCode.trim() ? `?inviteCode=${encodeURIComponent(inviteCode.trim())}` : "";
+      window.location.href = apiPath(`/auth/google${qs}`);
+    }
+  }
 
   useEffect(() => {
     if (registration !== null && !registration.open && mode === "register") {
@@ -162,6 +282,26 @@ export function AuthScreen() {
                 options={modeOptions}
               />
             ) : null}
+
+            {/* Google Sign-in */}
+            <div className="flex flex-col gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="flex w-full items-center justify-center gap-3 border-border font-medium hover:bg-muted/60 transition-colors shadow-xs"
+                onClick={handleGoogleClick}
+                disabled={busy}
+              >
+                <GoogleLogo />
+                <span>{t("auth.googleButton")}</span>
+              </Button>
+              <div className="relative flex items-center justify-center text-xs text-muted-foreground">
+                <span className="w-full border-t border-border" />
+                <span className="absolute bg-card px-2 text-muted-foreground">{t("auth.googleOr")}</span>
+              </div>
+            </div>
+
             <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
               {mode === "register" ? (
                 <Field id="auth-name" label={t("auth.yourName")} error={errors.displayName}>

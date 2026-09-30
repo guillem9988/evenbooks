@@ -55,15 +55,53 @@ describe("loadConfig", () => {
       REGISTRATION_INVITE_CODE: "invite-secret",
     });
     expect(config.registration).toEqual({ allowPublic: false, inviteCode: "invite-secret" });
-    expect(registrationStatus(config.registration)).toEqual({ open: true, inviteRequired: true });
+    expect(registrationStatus(config.registration)).toEqual({
+      open: true,
+      inviteRequired: true,
+      googleAuthEnabled: false,
+      googleClientId: null,
+    });
+  });
+
+  it("loads Google OAuth configuration", () => {
+    const config = loadConfig({
+      ...PRODUCTION,
+      GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com",
+      GOOGLE_CLIENT_SECRET: "test-secret",
+    });
+    expect(config.googleOAuth).toEqual({
+      clientId: "test-client-id.apps.googleusercontent.com",
+      clientSecret: "test-secret",
+    });
+    expect(registrationStatus(config.registration, config.googleOAuth)).toEqual({
+      open: false,
+      inviteRequired: false,
+      googleAuthEnabled: true,
+      googleClientId: "test-client-id.apps.googleusercontent.com",
+    });
   });
 });
 
 describe("registrationStatus", () => {
   it("closes sign-up unless public or invite is configured", () => {
-    expect(registrationStatus({ allowPublic: true, inviteCode: null })).toEqual({ open: true, inviteRequired: false });
-    expect(registrationStatus({ allowPublic: false, inviteCode: "x" })).toEqual({ open: true, inviteRequired: true });
-    expect(registrationStatus({ allowPublic: false, inviteCode: null })).toEqual({ open: false, inviteRequired: false });
+    expect(registrationStatus({ allowPublic: true, inviteCode: null })).toEqual({
+      open: true,
+      inviteRequired: false,
+      googleAuthEnabled: false,
+      googleClientId: null,
+    });
+    expect(registrationStatus({ allowPublic: false, inviteCode: "x" })).toEqual({
+      open: true,
+      inviteRequired: true,
+      googleAuthEnabled: false,
+      googleClientId: null,
+    });
+    expect(registrationStatus({ allowPublic: false, inviteCode: null })).toEqual({
+      open: false,
+      inviteRequired: false,
+      googleAuthEnabled: false,
+      googleClientId: null,
+    });
   });
 });
 
