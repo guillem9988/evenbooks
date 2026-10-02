@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { InvoiceStatus, MatchStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
+import { aiReconcileOrganization } from "../matching/ai-reconcile.js";
 import { reconcileOrganization } from "../matching/reconcile.js";
 import { scorePair, type MatchTransaction, type ScoredPair } from "../matching/score.js";
 
@@ -250,6 +251,63 @@ export function registerReconciliationRoutes(app: FastifyInstance, prisma: Prism
       data: { matchStatus: MatchStatus.UNMATCHED },
     });
     return reply.send({ id: updated.id, matchStatus: updated.matchStatus });
+  });
+
+  app.post("/organizations/:organizationId/reconciliation/ai-analyze", async (request, reply) => {
+    const organizationId = organizationParam(request);
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+
+    const result = await aiReconcileOrganization(prisma, organizationId);
+
+    const txIds = [
+      ...result.aiMatches.map((m) => m.transactionId),
+      ...result.classifications.map((c) => c.transactionId),
+    ];
+    const invIds = result.aiMatches.map((m) => m.invoiceId);
+
+    const [txRows, invRows] = await Promise.all([
+      prisma.bankTransaction.findMany({ where: { id: { in: txIds } } }),
+      prisma.invoice.findMany({ where: { id: { in: invIds } } }),
+    ]);
+
+    const txMap = new Map(txRows.map((t) => [t.id, bankLine(t)]));
+    const invMap = new Map(invRows.map((i) => [i.id, invoiceFields(i)]));
+
+    const matches = result.aiMatches.flatMap((m) => {
+      const tx = txMap.get(m.transactionId);
+      const inv = invMap.get(m.invoiceId);
+      if (!tx || !inv) return [];
+      return [
+        {
+          transactionId: m.transactionId,
+          invoiceId: m.invoiceId,
+          confidenceScore: m.confidenceScore,
+          reason: m.reason,
+          transaction: tx,
+          invoice: inv,
+        },
+      ];
+    });
+
+    const classifications = result.classifications.flatMap((c) => {
+      const tx = txMap.get(c.transactionId);
+      if (!tx) return [];
+      return [
+        {
+          transactionId: c.transactionId,
+          suggestedType: c.suggestedType,
+          reason: c.reason,
+          transaction: tx,
+        },
+      ];
+    });
+
+    return reply.send({ matches, classifications });
   });
 
   app.post("/organizations/:organizationId/reconciliation/matches", async (request, reply) => {

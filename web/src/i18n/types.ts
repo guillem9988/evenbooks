@@ -513,6 +513,17 @@ export type Dict = {
     statsUnmatched: string;
     statsIgnored: string;
     statsProgress: string;
+    aiAnalyze: string;
+    aiAnalyzing: string;
+    aiBannerTitle: string;
+    aiBannerDescription: string;
+    aiBannerEmpty: string;
+    aiMatchBadge: string;
+    aiAcceptMatch: string;
+    aiAcceptAllMatches: string;
+    aiClassificationBadge: string;
+    aiAcceptClassification: string;
+    aiDismiss: string;
   };
   taxes: {
     title: string;

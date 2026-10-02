@@ -110,6 +110,27 @@ interface CandidateInvoice extends InvoiceLine {
   score: number | null;
 }
 
+interface AiMatchResult {
+  transactionId: string;
+  invoiceId: string;
+  confidenceScore: string;
+  reason: string;
+  transaction: BankLine;
+  invoice: InvoiceLine;
+}
+
+interface AiClassificationResult {
+  transactionId: string;
+  suggestedType: "BANK_FEE" | "TAX" | "PAYROLL" | "SOCIAL_SECURITY" | "OTHER";
+  reason: string;
+  transaction: BankLine;
+}
+
+interface AiAnalyzePayload {
+  matches: AiMatchResult[];
+  classifications: AiClassificationResult[];
+}
+
 type Tab = "suggestions" | "unmatched" | "matched" | "ignored";
 
 export function ReviewDesk() {
@@ -124,6 +145,8 @@ export function ReviewDesk() {
   const [rejecting, setRejecting] = useState<AutoMatch | null>(null);
   const [tab, setTab] = useState<Tab>("suggestions");
   const [assigningTx, setAssigningTx] = useState<BankLine | null>(null);
+  const [aiResults, setAiResults] = useState<AiAnalyzePayload | null>(null);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
 
   const load = useCallback(async (): Promise<ReviewPayload> => {
     const body = await api<ReviewPayload>(`/organizations/${organizationId}/reconciliation/review`);
@@ -248,6 +271,110 @@ export function ReviewDesk() {
       t("bank.reconcileFailed"),
     );
 
+  const handleAiAnalyze = async () => {
+    setAiAnalyzing(true);
+    try {
+      const res = await api<AiAnalyzePayload>(
+        `/organizations/${organizationId}/reconciliation/ai-analyze`,
+        { method: "POST" },
+      );
+      setAiResults(res);
+      if ((res.matches?.length ?? 0) === 0 && (res.classifications?.length ?? 0) === 0) {
+        notifySuccess(t("bank.aiBannerEmpty"));
+      } else {
+        notifySuccess(
+          t("bank.aiBannerDescription", {
+            matches: res.matches?.length ?? 0,
+            classifications: res.classifications?.length ?? 0,
+          }),
+        );
+      }
+    } catch (err) {
+      notifyError(err, t("bank.reconcileFailed"));
+    } finally {
+      setAiAnalyzing(false);
+    }
+  };
+
+  const acceptAiMatch = async (match: AiMatchResult) => {
+    await run(
+      `ai-match-${match.transactionId}`,
+      async () => {
+        await api(`/organizations/${organizationId}/reconciliation/matches`, {
+          method: "POST",
+          body: JSON.stringify({
+            transactionId: match.transactionId,
+            invoiceId: match.invoiceId,
+          }),
+        });
+        setAiResults((prev) =>
+          prev
+            ? {
+                ...prev,
+                matches: prev.matches.filter((m) => m.transactionId !== match.transactionId),
+              }
+            : null,
+        );
+        await reload();
+        return t("bank.confirmed");
+      },
+      t("bank.confirmFailed"),
+    );
+  };
+
+  const acceptAllAiMatches = async () => {
+    if (!aiResults || aiResults.matches.length === 0) return;
+    await run(
+      "accept-all-ai",
+      async () => {
+        let count = 0;
+        for (const m of aiResults.matches) {
+          try {
+            await api(`/organizations/${organizationId}/reconciliation/matches`, {
+              method: "POST",
+              body: JSON.stringify({
+                transactionId: m.transactionId,
+                invoiceId: m.invoiceId,
+              }),
+            });
+            count++;
+          } catch {
+            // continue
+          }
+        }
+        setAiResults((prev) => (prev ? { ...prev, matches: [] } : null));
+        await reload();
+        return t("bank.batchConfirmSuccess", { count });
+      },
+      t("bank.batchConfirmFailed"),
+    );
+  };
+
+  const acceptAiClassification = async (c: AiClassificationResult) => {
+    await run(
+      `ai-class-${c.transactionId}`,
+      async () => {
+        await api(
+          `/organizations/${organizationId}/reconciliation/transactions/${c.transactionId}/ignore`,
+          { method: "POST" },
+        );
+        setAiResults((prev) =>
+          prev
+            ? {
+                ...prev,
+                classifications: prev.classifications.filter(
+                  (item) => item.transactionId !== c.transactionId,
+                ),
+              }
+            : null,
+        );
+        await reload();
+        return t("bank.markNoInvoiceSuccess");
+      },
+      t("bank.reconcileFailed"),
+    );
+  };
+
   async function reject() {
     if (rejecting === null) return;
     await run(
@@ -285,13 +412,151 @@ export function ReviewDesk() {
             <Button variant="outline" onClick={() => setUploading(true)}>
               <UploadIcon /> {t("bank.uploadInvoices")}
             </Button>
+            <Button
+              disabled={busy !== null || aiAnalyzing}
+              onClick={handleAiAnalyze}
+              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-sm"
+            >
+              <SparklesIcon className={aiAnalyzing ? "animate-spin" : ""} />
+              {aiAnalyzing ? t("bank.aiAnalyzing") : t("bank.aiAnalyze")}
+            </Button>
             <Button disabled={busy !== null} onClick={reconcile}>
-              <SparklesIcon /> {busy === "reconcile" ? t("bank.reconciling") : t("bank.reconcile")}
+              {busy === "reconcile" ? t("bank.reconciling") : t("bank.reconcile")}
             </Button>
           </>
         }
       />
       <ErrorBanner message={error} onRetry={reload} />
+
+      {/* AI Analysis Results Card */}
+      {aiResults !== null && (aiResults.matches.length > 0 || aiResults.classifications.length > 0) && (
+        <Card className="border-violet-300 bg-violet-50/50 dark:bg-violet-950/20 dark:border-violet-900 overflow-hidden mb-4">
+          <CardHeader className="pb-3 border-b border-violet-200/60 dark:border-violet-900/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-600 text-white">
+                  <SparklesIcon className="h-4 w-4" />
+                </span>
+                <div>
+                  <CardTitle className="text-base text-violet-950 dark:text-violet-100">
+                    {t("bank.aiBannerTitle")}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-violet-700 dark:text-violet-300">
+                    {t("bank.aiBannerDescription", {
+                      matches: aiResults.matches.length,
+                      classifications: aiResults.classifications.length,
+                    })}
+                  </CardDescription>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setAiResults(null)}>
+                <XIcon className="h-4 w-4" /> {t("bank.aiDismiss")}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4 flex flex-col gap-4">
+            {aiResults.matches.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-violet-900 dark:text-violet-300">
+                    {t("bank.aiMatchBadge")} ({aiResults.matches.length})
+                  </p>
+                  {aiResults.matches.length > 1 && (
+                    <Button
+                      size="sm"
+                      onClick={acceptAllAiMatches}
+                      className="bg-violet-600 hover:bg-violet-700 text-white text-xs h-7"
+                    >
+                      <CheckCheckIcon className="h-3.5 w-3.5 mr-1" />
+                      {t("bank.aiAcceptAllMatches", { count: aiResults.matches.length })}
+                    </Button>
+                  )}
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {aiResults.matches.map((match) => (
+                    <li
+                      key={`${match.transactionId}-${match.invoiceId}`}
+                      className="flex flex-col gap-2 rounded-lg border border-violet-200 bg-white p-3 dark:bg-card dark:border-violet-900"
+                    >
+                      <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <p className="text-xs text-muted-foreground uppercase">
+                            {t("bank.movement")} · {formatDate(match.transaction.transactionDate)}
+                          </p>
+                          <p className="truncate font-medium">{match.transaction.rawDescription}</p>
+                          <p className="text-sm font-semibold tabular-nums">
+                            {euros(match.transaction.amountCents)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground uppercase">
+                            {t("bank.invoice")} · {formatDate(match.invoice.invoiceDate)}
+                          </p>
+                          <p className="truncate font-medium">
+                            {match.invoice.vendorName ?? t("bank.unknownVendor")}
+                          </p>
+                          <p className="text-sm font-semibold tabular-nums">
+                            {euros(match.invoice.totalAmountCents)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-violet-100 dark:border-violet-900">
+                        <p className="text-xs text-violet-800 dark:text-violet-300 font-medium flex-1">
+                          💡 {match.reason}
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={() => acceptAiMatch(match)}
+                          className="bg-violet-600 hover:bg-violet-700 text-white shrink-0"
+                        >
+                          <CheckIcon className="h-3.5 w-3.5 mr-1" /> {t("bank.aiAcceptMatch")}
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {aiResults.classifications.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-900 dark:text-amber-300">
+                  {t("bank.aiClassificationBadge")} ({aiResults.classifications.length})
+                </p>
+                <ul className="flex flex-col gap-2">
+                  {aiResults.classifications.map((c) => (
+                    <li
+                      key={c.transactionId}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white p-3 dark:bg-card dark:border-amber-900"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-muted-foreground uppercase">
+                          {t("bank.movement")} · {formatDate(c.transaction.transactionDate)}
+                        </p>
+                        <p className="truncate font-medium">{c.transaction.rawDescription}</p>
+                        <p className="text-sm font-semibold tabular-nums">
+                          {euros(c.transaction.amountCents)}
+                        </p>
+                        <p className="text-xs text-amber-800 dark:text-amber-300 font-medium mt-0.5">
+                          💡 {c.reason}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => acceptAiClassification(c)}
+                        className="border-amber-300 text-amber-900 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-950 shrink-0"
+                      >
+                        <BanIcon className="h-3.5 w-3.5 mr-1" /> {t("bank.aiAcceptClassification")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPI Stats Overview */}
       {stats !== undefined && stats.total > 0 && (
