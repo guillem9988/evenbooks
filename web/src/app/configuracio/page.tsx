@@ -74,7 +74,9 @@ interface ExtractorSettingsPayload {
 
 const GEMINI_MODELS = [
   { id: "gemini-flash-latest", name: "gemini-flash-latest", badge: "Recomanat & Estable" },
-  { id: "gemini-3.5-flash", name: "gemini-3.5-flash", badge: "Ràpid & Eficient" },
+  { id: "gemini-flash-lite-latest", name: "gemini-flash-lite-latest", badge: "Ultraràpid & Econòmic" },
+  { id: "gemini-3.5-flash", name: "gemini-3.5-flash", badge: "Equilibrat" },
+  { id: "gemini-3.5-flash-lite", name: "gemini-3.5-flash-lite", badge: "Mínim cost" },
   { id: "gemini-3.8-flash", name: "gemini-3.8-flash", badge: "Nou Flagship" },
   { id: "gemini-3.1-pro-preview", name: "gemini-3.1-pro-preview", badge: "Màxima precisió" },
 ];
@@ -753,7 +755,10 @@ export default function SettingsPage() {
                 <CardDescription>{t("settings.geminiDescription")}</CardDescription>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 font-mono text-[11px]">
-                    gemini-3.8-flash (nou flagship)
+                    gemini-flash-latest (recomanat)
+                  </Badge>
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 font-mono text-[11px]">
+                    gemini-flash-lite-latest (ultraràpid)
                   </Badge>
                   <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
                     gemini-3.5-flash
