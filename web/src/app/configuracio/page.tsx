@@ -73,10 +73,10 @@ interface ExtractorSettingsPayload {
 }
 
 const GEMINI_MODELS = [
-  { id: "gemini-3.8-flash", name: "gemini-3.8-flash", badge: "Nou Flagship" },
+  { id: "gemini-flash-latest", name: "gemini-flash-latest", badge: "Recomanat & Estable" },
   { id: "gemini-3.5-flash", name: "gemini-3.5-flash", badge: "Ràpid & Eficient" },
-  { id: "gemini-3.1-pro", name: "gemini-3.1-pro", badge: "Màxima precisió" },
-  { id: "gemini-2.5-flash", name: "gemini-2.5-flash", badge: "Estable" },
+  { id: "gemini-3.8-flash", name: "gemini-3.8-flash", badge: "Nou Flagship" },
+  { id: "gemini-3.1-pro-preview", name: "gemini-3.1-pro-preview", badge: "Màxima precisió" },
 ];
 
 const OPENAI_MODELS = [

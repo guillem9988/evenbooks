@@ -273,48 +273,73 @@ async function geminiExtract(
     });
   }
 
-  const targetModel = model?.trim() || "gemini-2.5-flash";
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [
-            {
-              text: "You are an expert invoice extraction AI. Extract invoice fields and return ONLY a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent (integer: 21, 10, 4, 0 or null), is_simplified_receipt (boolean). Never invent amounts. If unreadable, return null.",
+  const preferred = model?.trim() || "gemini-flash-latest";
+  const modelChain = [
+    preferred,
+    "gemini-flash-latest",
+    "gemini-3.5-flash",
+  ].filter((m, i, arr) => arr.indexOf(m) === i);
+
+  let lastError: Error | null = null;
+
+  for (const targetModel of modelChain) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system_instruction: {
+              parts: [
+                {
+                  text: "You are an expert invoice extraction AI. Extract invoice fields and return ONLY a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent (integer: 21, 10, 4, 0 or null), is_simplified_receipt (boolean). Never invent amounts. If unreadable, return null.",
+                },
+              ],
             },
-          ],
+            contents: [{ parts }],
+            generationConfig: {
+              responseMimeType: "application/json",
+            },
+          }),
         },
-        contents: [{ parts }],
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-      }),
-    },
-  );
+      );
 
-  if (!res.ok) {
-    const errorBody = await res.text();
-    throw new ExtractionError(`Google Gemini API error (${res.status}): ${errorBody}`);
-  }
+      if (!res.ok) {
+        const errorBody = await res.text();
+        const isTemporary = res.status === 503 || res.status === 429 || res.status === 404;
+        if (isTemporary && modelChain.indexOf(targetModel) < modelChain.length - 1) {
+          lastError = new ExtractionError(`Google Gemini API error (${res.status}) on ${targetModel}: ${errorBody}`);
+          continue;
+        }
+        throw new ExtractionError(`Google Gemini API error (${res.status}): ${errorBody}`);
+      }
 
-  const data = (await res.json()) as {
-    candidates?: Array<{
-      content?: {
-        parts?: Array<{ text?: string }>;
+      const data = (await res.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: string }>;
+          };
+        }>;
       };
-    }>;
-  };
 
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  const cleaned = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
-  if (!cleaned) {
-    throw new ExtractionError("Google Gemini returned an empty invoice payload.");
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      const cleaned = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+      if (!cleaned) {
+        throw new ExtractionError("Google Gemini returned an empty invoice payload.");
+      }
+      const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+      return normalizeExtractedMap(parsed);
+    } catch (err) {
+      if (err instanceof ExtractionError && modelChain.indexOf(targetModel) < modelChain.length - 1) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
   }
-  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
-  return normalizeExtractedMap(parsed);
+
+  throw lastError ?? new ExtractionError("Google Gemini extraction failed on all model candidates.");
 }
 
 export async function extractInvoiceWithGemini(input: {
