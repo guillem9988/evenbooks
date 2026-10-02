@@ -22,22 +22,71 @@ export interface ParsedBankTransaction {
 const DATE_HEADERS = new Set([
   "date",
   "fecha",
+  "data",
   "transactiondate",
   "fechaoperacion",
+  "dataoperacio",
   "fechamovimiento",
+  "datamoviment",
+  "foperacion",
+  "fmovimiento",
+  "fmoviment",
+  "fechadeoperacion",
 ]);
-const VALUE_DATE_HEADERS = new Set(["valuedate", "fechavalor"]);
+const VALUE_DATE_HEADERS = new Set([
+  "valuedate",
+  "fechavalor",
+  "datavalor",
+  "fvalor",
+  "fechadevalor",
+]);
 const DESCRIPTION_HEADERS = new Set([
   "description",
   "concepto",
+  "concepte",
   "concept",
   "descripcion",
+  "descripcio",
   "movimiento",
+  "moviment",
+  "detalle",
+  "detall",
+  "texto",
   "rawdescription",
+  "conceptocompleto",
+  "concepteampliat",
+  "concepteampli",
+  "informacionadicional",
 ]);
-const AMOUNT_HEADERS = new Set(["amount", "importe", "cantidad"]);
-const DEBIT_HEADERS = new Set(["debit", "debe", "cargo"]);
-const CREDIT_HEADERS = new Set(["credit", "haber", "abono"]);
+const AMOUNT_HEADERS = new Set([
+  "amount",
+  "importe",
+  "import",
+  "cantidad",
+  "quantitat",
+  "importeeur",
+  "importeur",
+  "cargooabono",
+  "carrecoabonament",
+]);
+const DEBIT_HEADERS = new Set([
+  "debit",
+  "debe",
+  "cargo",
+  "carrec",
+  "despesa",
+  "pagament",
+  "pagos",
+]);
+const CREDIT_HEADERS = new Set([
+  "credit",
+  "haber",
+  "abono",
+  "abonament",
+  "ingreso",
+  "ingres",
+  "cobros",
+]);
 
 export function parseBankCsv(content: string): ParsedBankTransaction[] {
   const text = content.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
@@ -47,8 +96,7 @@ export function parseBankCsv(content: string): ParsedBankTransaction[] {
 
   const delimiter = detectDelimiter(text);
   const rows = parseRows(text, delimiter).filter((row) => row.some((cell) => cell.trim() !== ""));
-  const header = rows[0];
-  if (header === undefined || rows.length < 2) {
+  if (rows.length < 2) {
     throw new CsvStatementError("CSV must include a header and at least one transaction");
   }
 
@@ -58,12 +106,52 @@ export function parseBankCsv(content: string): ParsedBankTransaction[] {
 /** Header plus data rows. Same columns as the CSV importer. */
 export function parseBankTable(rows: string[][]): ParsedBankTransaction[] {
   const filled = rows.filter((row) => row.some((cell) => cell.trim() !== ""));
-  const header = filled[0];
-  if (header === undefined || filled.length < 2) {
+  if (filled.length < 2) {
     throw new CsvStatementError("Statement must include a header and at least one transaction");
   }
-  const columns = mapColumns(header);
-  return filled.slice(1).map((row, index) => parseRow(row, columns, index + 2));
+
+  // Scan up to the first 15 rows for the true header row (handles bank metadata/preamble rows)
+  let headerIndex = -1;
+  let columns: ColumnMap | null = null;
+  for (let i = 0; i < Math.min(filled.length, 15); i++) {
+    const candidate = tryMapColumns(filled[i]!);
+    if (candidate !== null) {
+      headerIndex = i;
+      columns = candidate;
+      break;
+    }
+  }
+
+  if (columns === null || headerIndex === -1) {
+    throw new CsvStatementError(
+      "CSV header must include a date, a description, and an amount or debit/credit columns",
+    );
+  }
+
+  const dataRows = filled.slice(headerIndex + 1);
+  if (dataRows.length === 0) {
+    throw new CsvStatementError("Statement has no transactions");
+  }
+
+  const transactions: ParsedBankTransaction[] = [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i]!;
+    try {
+      transactions.push(parseRow(row, columns, headerIndex + i + 2));
+    } catch (err) {
+      // If trailing lines are summary/empty notes and we already parsed valid transactions, gracefully skip them
+      if (transactions.length > 0 && i >= dataRows.length - 2) {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (transactions.length === 0) {
+    throw new CsvStatementError("Statement has no valid transactions");
+  }
+
+  return transactions;
 }
 
 export function cleanDescription(value: string): string {
@@ -127,7 +215,7 @@ interface ColumnMap {
   credit: number | null;
 }
 
-function mapColumns(header: string[]): ColumnMap {
+function tryMapColumns(header: string[]): ColumnMap | null {
   const indexes = new Map<string, number>();
   header.forEach((cell, index) => {
     indexes.set(headerKey(cell), index);
@@ -139,9 +227,7 @@ function mapColumns(header: string[]): ColumnMap {
   const debit = findHeader(indexes, DEBIT_HEADERS);
   const credit = findHeader(indexes, CREDIT_HEADERS);
   if (date === null || description === null || (amount === null && debit === null && credit === null)) {
-    throw new CsvStatementError(
-      "CSV header must include a date, a description, and an amount or debit/credit columns",
-    );
+    return null;
   }
   return {
     date,
@@ -151,6 +237,16 @@ function mapColumns(header: string[]): ColumnMap {
     debit,
     credit,
   };
+}
+
+export function mapColumns(header: string[]): ColumnMap {
+  const result = tryMapColumns(header);
+  if (result === null) {
+    throw new CsvStatementError(
+      "CSV header must include a date, a description, and an amount or debit/credit columns",
+    );
+  }
+  return result;
 }
 
 function parseRow(row: string[], columns: ColumnMap, line: number): ParsedBankTransaction {
@@ -235,10 +331,19 @@ function headerKey(value: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-function detectDelimiter(text: string): "," | ";" {
-  const line = text.split("\n")[0] ?? "";
-  const commas = countDelimiter(line, ",");
-  const semicolons = countDelimiter(line, ";");
+function detectDelimiter(text: string): "," | ";" | "\t" {
+  const sampleLines = text.split("\n").slice(0, 10);
+  let commas = 0;
+  let semicolons = 0;
+  let tabs = 0;
+  for (const line of sampleLines) {
+    commas += countDelimiter(line, ",");
+    semicolons += countDelimiter(line, ";");
+    tabs += countDelimiter(line, "\t");
+  }
+  if (tabs > semicolons && tabs > commas) {
+    return "\t";
+  }
   return semicolons > commas ? ";" : ",";
 }
 
@@ -255,7 +360,7 @@ function countDelimiter(line: string, delimiter: string): number {
   return count;
 }
 
-function parseRows(text: string, delimiter: "," | ";"): string[][] {
+function parseRows(text: string, delimiter: "," | ";" | "\t"): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cellValue = "";

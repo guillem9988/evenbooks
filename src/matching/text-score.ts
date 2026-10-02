@@ -12,6 +12,22 @@ const STOPWORDS = new Set([
   "sociedad",
   "limitada",
   "anonima",
+  "pago",
+  "pagament",
+  "recibo",
+  "rebut",
+  "adeudo",
+  "cargo",
+  "carrec",
+  "sepa",
+  "transf",
+  "transferencia",
+  "bizum",
+  "cuota",
+  "quota",
+  "abono",
+  "factura",
+  "fra",
 ]);
 
 export function textSimilarity(vendorName: string, description: string): number {

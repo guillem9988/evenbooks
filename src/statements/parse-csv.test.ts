@@ -29,6 +29,21 @@ describe("parseBankCsv", () => {
     expect(rows[0]?.amountCents).toBe(-4510n);
     expect(rows[1]?.amountCents).toBe(8000n);
   });
+
+  it("handles bank preamble rows (CaixaBank / BBVA / Santander) and Catalan headers", () => {
+    const content = [
+      "Titular: EMPRESA SL",
+      "Compte: ES12 3456 7890 1234 5678",
+      "Data;Data valor;Concepte;Import;Saldo",
+      "15/03/2026;15/03/2026;PAGAMENT RESTAURANT;-54,20;1.200,00",
+      "16/03/2026;16/03/2026;TRANSFERENCIA CLIENT;350,00;1.550,00",
+    ].join("\n");
+    const rows = parseBankCsv(content);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.amountCents).toBe(-5420n);
+    expect(rows[0]?.rawDescription).toBe("PAGAMENT RESTAURANT");
+    expect(rows[1]?.amountCents).toBe(35000n);
+  });
 });
 
 describe("parseBankAmount", () => {

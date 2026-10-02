@@ -46,7 +46,7 @@ export interface MatchingBreakdown {
   };
   date: ScorePart & { dayGap: number | null };
   text: ScorePart & { transactionText: string; vendorText: string };
-  vendor: ScorePart & { nifMatched: boolean; previouslyConfirmed: boolean };
+  vendor: ScorePart & { nifMatched: boolean; previouslyConfirmed: boolean; invoiceNumberMatched?: boolean };
   currencyCompatible: boolean;
   weights: { amount: string; date: string; text: string; vendor: string };
 }
@@ -101,6 +101,7 @@ export function scorePair(transaction: MatchTransaction, invoice: MatchInvoice):
         points: vendor.points,
         nifMatched: vendor.nifMatched,
         previouslyConfirmed: vendor.previouslyConfirmed,
+        invoiceNumberMatched: vendor.invoiceNumberMatched,
       },
       currencyCompatible,
       weights: { amount: "0.4500", date: "0.2000", text: "0.2000", vendor: "0.1500" },
@@ -162,16 +163,21 @@ function scoreDate(transactionDate: Date, invoiceDate: Date | null): { points: n
 function scoreVendor(
   description: string,
   invoice: MatchInvoice,
-): { points: number; nifMatched: boolean; previouslyConfirmed: boolean } {
+): { points: number; nifMatched: boolean; previouslyConfirmed: boolean; invoiceNumberMatched: boolean } {
   const taxId = normalizeTaxId(invoice.vendorTaxId);
-  const nifMatched = taxId !== null && description.toUpperCase().replace(/[^A-Z0-9]/g, "").includes(taxId);
-  if (nifMatched) {
-    return { points: 10_000, nifMatched: true, previouslyConfirmed: false };
+  const cleanDesc = description.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const nifMatched = taxId !== null && cleanDesc.includes(taxId);
+
+  const cleanNum = invoice.invoiceNumber?.toUpperCase().replace(/[^A-Z0-9]/g, "") ?? "";
+  const invoiceNumberMatched = cleanNum.length >= 3 && cleanDesc.includes(cleanNum);
+
+  if (nifMatched || invoiceNumberMatched) {
+    return { points: 10_000, nifMatched, previouslyConfirmed: false, invoiceNumberMatched };
   }
   if (invoice.previouslyConfirmedVendor === true) {
-    return { points: 8_000, nifMatched: false, previouslyConfirmed: true };
+    return { points: 8_000, nifMatched: false, previouslyConfirmed: true, invoiceNumberMatched: false };
   }
-  return { points: 5_000, nifMatched: false, previouslyConfirmed: false };
+  return { points: 5_000, nifMatched: false, previouslyConfirmed: false, invoiceNumberMatched: false };
 }
 
 function absBigInt(value: bigint): bigint {

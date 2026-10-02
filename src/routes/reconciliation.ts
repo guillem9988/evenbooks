@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { MatchStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
+import { InvoiceStatus, MatchStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
 import { reconcileOrganization } from "../matching/reconcile.js";
 import { scorePair, type MatchTransaction, type ScoredPair } from "../matching/score.js";
 
@@ -15,11 +15,241 @@ export function registerReconciliationRoutes(app: FastifyInstance, prisma: Prism
       return reply.code(404).send({ error: "Organization not found" });
     }
     const result = await reconcileOrganization(prisma, organizationId);
-    const [suggestions, autoMatched] = await Promise.all([
+    const [suggestions, matched, allUnmatched, ignored, totalCount] = await Promise.all([
       hydrateSuggestions(prisma, result.suggestions),
-      loadAutoMatched(prisma, organizationId),
+      loadAllMatched(prisma, organizationId),
+      prisma.bankTransaction.findMany({
+        where: { organizationId, matchStatus: MatchStatus.UNMATCHED },
+        orderBy: { transactionDate: "desc" },
+      }),
+      prisma.bankTransaction.findMany({
+        where: { organizationId, matchStatus: MatchStatus.IGNORED },
+        orderBy: { transactionDate: "desc" },
+      }),
+      prisma.bankTransaction.count({ where: { organizationId } }),
     ]);
-    return reply.send({ suggestions, autoMatched });
+
+    const suggestedTxIds = new Set(suggestions.map((s) => s.transaction.id));
+    const unmatched = allUnmatched
+      .filter((tx) => !suggestedTxIds.has(tx.id))
+      .map(bankLine);
+
+    const stats = {
+      total: totalCount,
+      matched: matched.length,
+      suggestions: suggestions.length,
+      unmatched: unmatched.length,
+      ignored: ignored.length,
+      completionPercent:
+        totalCount > 0 ? Math.round(((matched.length + ignored.length) / totalCount) * 100) : 100,
+    };
+
+    return reply.send({
+      suggestions,
+      autoMatched: matched,
+      matched,
+      unmatched,
+      ignored: ignored.map(bankLine),
+      stats,
+    });
+  });
+
+  app.get("/organizations/:organizationId/reconciliation/candidate-invoices", async (request, reply) => {
+    const organizationId = organizationParam(request);
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+
+    const query = request.query as { transactionId?: string; search?: string };
+    let transaction: {
+      id: string;
+      amountCents: bigint;
+      currency: string;
+      transactionDate: Date;
+      rawDescription: string;
+      normalizedMerchant: string | null;
+    } | null = null;
+
+    if (typeof query.transactionId === "string" && UUID.test(query.transactionId)) {
+      transaction = await prisma.bankTransaction.findFirst({
+        where: { id: query.transactionId, organizationId },
+      });
+    }
+
+    const search = typeof query.search === "string" ? query.search.trim().toLowerCase() : "";
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: InvoiceStatus.PARSED,
+        reconciliation: null,
+        ...(search.length > 0
+          ? {
+              OR: [
+                { vendorName: { contains: search, mode: "insensitive" } },
+                { invoiceNumber: { contains: search, mode: "insensitive" } },
+                { vendorTaxId: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { invoiceDate: "desc" },
+      take: 50,
+    });
+
+    const candidates = invoices.map((inv) => {
+      let score: number | null = null;
+      let exactAmount = false;
+      if (transaction !== null) {
+        const scored = scorePair(toTransaction(transaction), {
+          id: inv.id,
+          vendorName: inv.vendorName,
+          vendorTaxId: inv.vendorTaxId,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          currency: inv.currency,
+          baseAmountCents: inv.baseAmountCents,
+          totalAmountCents: inv.totalAmountCents,
+        });
+        score = scored.confidencePoints;
+        exactAmount = scored.breakdown.amount.exact;
+      }
+      return {
+        ...invoiceFields(inv),
+        score,
+        exactAmount,
+      };
+    });
+
+    if (transaction !== null) {
+      candidates.sort((a, b) => {
+        if (a.exactAmount && !b.exactAmount) return -1;
+        if (!a.exactAmount && b.exactAmount) return 1;
+        return (b.score ?? 0) - (a.score ?? 0);
+      });
+    }
+
+    return reply.send({ candidates });
+  });
+
+  app.post("/organizations/:organizationId/reconciliation/batch-confirm", async (request, reply) => {
+    const organizationId = organizationParam(request);
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+
+    const body = (request.body ?? {}) as { pairs?: Array<{ transactionId: string; invoiceId: string }> };
+    let pairsToConfirm: Array<{ transactionId: string; invoiceId: string }> = [];
+
+    if (Array.isArray(body.pairs) && body.pairs.length > 0) {
+      pairsToConfirm = body.pairs.filter(
+        (p) => typeof p.transactionId === "string" && typeof p.invoiceId === "string",
+      );
+    } else {
+      const reviewResult = await reconcileOrganization(prisma, organizationId);
+      pairsToConfirm = reviewResult.suggestions.map((s) => ({
+        transactionId: s.transactionId,
+        invoiceId: s.invoiceId,
+      }));
+    }
+
+    let confirmedCount = 0;
+    for (const pair of pairsToConfirm) {
+      try {
+        const [txRow, invRow] = await Promise.all([
+          prisma.bankTransaction.findFirst({
+            where: { id: pair.transactionId, organizationId, matchStatus: MatchStatus.UNMATCHED },
+          }),
+          prisma.invoice.findFirst({
+            where: { id: pair.invoiceId, organizationId, reconciliation: null },
+          }),
+        ]);
+        if (txRow !== null && invRow !== null) {
+          const scored = scorePair(toTransaction(txRow), {
+            id: invRow.id,
+            vendorName: invRow.vendorName,
+            vendorTaxId: invRow.vendorTaxId,
+            invoiceNumber: invRow.invoiceNumber,
+            invoiceDate: invRow.invoiceDate,
+            currency: invRow.currency,
+            baseAmountCents: invRow.baseAmountCents,
+            totalAmountCents: invRow.totalAmountCents,
+          });
+          await prisma.$transaction([
+            prisma.reconciliationMatch.create({
+              data: {
+                organizationId,
+                transactionId: txRow.id,
+                invoiceId: invRow.id,
+                confidenceScore: new Prisma.Decimal(scored.confidenceScore),
+                isAutoConfirmed: false,
+                matchingBreakdown: JSON.parse(JSON.stringify(scored.breakdown)) as Prisma.InputJsonValue,
+                confirmedAt: new Date(),
+                confirmedByUserId: request.userId ?? null,
+              },
+            }),
+            prisma.bankTransaction.update({
+              where: { id: txRow.id },
+              data: { matchStatus: MatchStatus.MANUALLY_MATCHED },
+            }),
+          ]);
+          confirmedCount++;
+        }
+      } catch {
+        // Continue with next pair
+      }
+    }
+
+    return reply.send({ confirmedCount });
+  });
+
+  app.post("/organizations/:organizationId/reconciliation/transactions/:transactionId/ignore", async (request, reply) => {
+    const organizationId = organizationParam(request);
+    const { transactionId } = request.params as { transactionId: string };
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (!UUID.test(transactionId)) {
+      return reply.code(400).send({ error: "transactionId must be a UUID" });
+    }
+    const tx = await prisma.bankTransaction.findFirst({
+      where: { id: transactionId, organizationId },
+    });
+    if (tx === null) {
+      return reply.code(404).send({ error: "Transaction not found" });
+    }
+    const updated = await prisma.bankTransaction.update({
+      where: { id: tx.id },
+      data: { matchStatus: MatchStatus.IGNORED },
+    });
+    return reply.send({ id: updated.id, matchStatus: updated.matchStatus });
+  });
+
+  app.post("/organizations/:organizationId/reconciliation/transactions/:transactionId/unignore", async (request, reply) => {
+    const organizationId = organizationParam(request);
+    const { transactionId } = request.params as { transactionId: string };
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (!UUID.test(transactionId)) {
+      return reply.code(400).send({ error: "transactionId must be a UUID" });
+    }
+    const tx = await prisma.bankTransaction.findFirst({
+      where: { id: transactionId, organizationId },
+    });
+    if (tx === null) {
+      return reply.code(404).send({ error: "Transaction not found" });
+    }
+    const updated = await prisma.bankTransaction.update({
+      where: { id: tx.id },
+      data: { matchStatus: MatchStatus.UNMATCHED },
+    });
+    return reply.send({ id: updated.id, matchStatus: updated.matchStatus });
   });
 
   app.post("/organizations/:organizationId/reconciliation/matches", async (request, reply) => {
@@ -164,16 +394,16 @@ async function hydrateSuggestions(prisma: PrismaClient, pairs: ScoredPair[]) {
   });
 }
 
-async function loadAutoMatched(prisma: PrismaClient, organizationId: string) {
+async function loadAllMatched(prisma: PrismaClient, organizationId: string) {
   const matches = await prisma.reconciliationMatch.findMany({
-    where: { organizationId, isAutoConfirmed: true },
+    where: { organizationId },
     include: { transaction: true, invoice: true },
     orderBy: { confirmedAt: "desc" },
   });
   return matches.map((match) => ({
     id: match.id,
     confidenceScore: match.confidenceScore.toFixed(4),
-    isAutoConfirmed: true,
+    isAutoConfirmed: match.isAutoConfirmed,
     breakdown: match.matchingBreakdown,
     transaction: bankLine(match.transaction),
     invoice: invoiceFields(match.invoice),

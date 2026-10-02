@@ -82,6 +82,23 @@ describe("scorePair", () => {
     expect(scored.breakdown.currencyCompatible).toBe(false);
     expect(scored.autoConfirm).toBe(false);
   });
+
+  it("boosts vendor score when invoice number is mentioned in the bank description", () => {
+    const scored = scorePair(
+      transaction({
+        rawDescription: "TRANSF BANCARIA PAGO FRA FA8006803",
+        amountCents: -5000n,
+      }),
+      invoice({
+        vendorName: "Empresa Proveïdora Diferent SL",
+        vendorTaxId: null,
+        invoiceNumber: "FA8006803",
+        totalAmountCents: 5000n,
+      }),
+    );
+    expect(scored.breakdown.vendor.invoiceNumberMatched).toBe(true);
+    expect(scored.breakdown.vendor.points).toBe(10_000);
+  });
 });
 
 describe("assignMatches", () => {
