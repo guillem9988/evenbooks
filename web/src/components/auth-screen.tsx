@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, LockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,11 +43,11 @@ function GoogleLogo({ className }: { className?: string }) {
   );
 }
 
-export function AuthScreen() {
+export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
   const { refresh } = useOrganization();
   const t = useT();
   const { dict } = useI18n();
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [registration, setRegistration] = useState<RegistrationInfo | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -166,10 +166,20 @@ export function AuthScreen() {
   }
 
   useEffect(() => {
-    if (registration !== null && !registration.open && mode === "register") {
-      setMode("login");
+    setMode(initialMode);
+  }, [initialMode]);
+
+  function switchMode(nextMode: Mode) {
+    setMode(nextMode);
+    setErrors({});
+    setError(null);
+    if (typeof window !== "undefined") {
+      const targetPath = nextMode === "register" ? "/registre" : "/";
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, "", targetPath);
+      }
     }
-  }, [registration, mode]);
+  }
 
   function validate(): Errors {
     const next: Errors = {};
@@ -186,6 +196,7 @@ export function AuthScreen() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (mode === "register" && !registerOpen) return;
     const next = validate();
     setErrors(next);
     setError(null);
@@ -220,12 +231,10 @@ export function AuthScreen() {
   }
 
   const registerOpen = registration?.open === true;
-  const modeOptions: Array<readonly [Mode, string]> = registerOpen
-    ? [
-        ["login", t("auth.login")],
-        ["register", t("auth.register")],
-      ]
-    : [["login", t("auth.login")]];
+  const modeOptions: Array<readonly [Mode, string]> = [
+    ["login", t("auth.login")],
+    ["register", t("auth.register")],
+  ];
 
   return (
     <main id="contingut" className="grid min-h-dvh flex-1 lg:grid-cols-2">
@@ -260,27 +269,41 @@ export function AuthScreen() {
               </div>
               <LanguageSwitcher className="h-8 w-auto text-xs" />
             </div>
-            <CardTitle className="text-xl">{mode === "login" ? t("auth.loginTitle") : t("auth.registerTitle")}</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-xl">{mode === "login" ? t("auth.loginTitle") : t("auth.registerTitle")}</CardTitle>
+              {mode === "register" && !registerOpen ? (
+                <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                  {t("auth.registerDisabledBadge")}
+                </span>
+              ) : null}
+            </div>
             <CardDescription>
               {mode === "login"
                 ? t("auth.loginHint")
-                : registration?.inviteRequired
-                  ? t("auth.registerHintInvite")
-                  : t("auth.registerHint")}
+                : registerOpen
+                  ? registration?.inviteRequired
+                    ? t("auth.registerHintInvite")
+                    : t("auth.registerHint")
+                  : t("auth.registerDisabledMessage")}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
-            {registerOpen ? (
-              <Segmented
-                label={t("auth.access")}
-                value={mode}
-                onChange={(nextMode) => {
-                  setMode(nextMode);
-                  setErrors({});
-                  setError(null);
-                }}
-                options={modeOptions}
-              />
+            <Segmented
+              label={t("auth.access")}
+              value={mode}
+              onChange={switchMode}
+              options={modeOptions}
+            />
+
+            {/* Informational banner when registration is closed */}
+            {mode === "register" && !registerOpen ? (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200">
+                <LockIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-semibold text-xs text-amber-950 dark:text-amber-100">{t("auth.registerDisabledTitle")}</span>
+                  <span className="opacity-90 leading-relaxed">{t("auth.registerDisabledMessage")}</span>
+                </div>
+              </div>
             ) : null}
 
             {/* Google Sign-in */}
@@ -291,7 +314,7 @@ export function AuthScreen() {
                 size="lg"
                 className="flex w-full items-center justify-center gap-3 border-border font-medium hover:bg-muted/60 transition-colors shadow-xs"
                 onClick={handleGoogleClick}
-                disabled={busy}
+                disabled={busy || (mode === "register" && !registerOpen)}
               >
                 <GoogleLogo />
                 <span>{t("auth.googleButton")}</span>
@@ -305,11 +328,26 @@ export function AuthScreen() {
             <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
               {mode === "register" ? (
                 <Field id="auth-name" label={t("auth.yourName")} error={errors.displayName}>
-                  <Input id="auth-name" autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+                  <Input
+                    id="auth-name"
+                    autoComplete="name"
+                    value={displayName}
+                    disabled={!registerOpen}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    placeholder="Guillem Rovira"
+                  />
                 </Field>
               ) : null}
               <Field id="auth-email" label={t("common.email")} error={errors.email}>
-                <Input id="auth-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+                <Input
+                  id="auth-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  disabled={mode === "register" && !registerOpen}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="hola@exemple.com"
+                />
               </Field>
               <Field id="auth-password" label={t("common.password")} error={errors.password} hint={mode === "register" ? t("validation.passwordMin") : undefined}>
                 <Input
@@ -317,29 +355,82 @@ export function AuthScreen() {
                   type="password"
                   autoComplete={mode === "login" ? "current-password" : "new-password"}
                   value={password}
+                  disabled={mode === "register" && !registerOpen}
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </Field>
               {mode === "register" ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field id="org-name" label={t("common.legalName")} error={errors.legalName}>
-                    <Input id="org-name" autoComplete="organization" value={legalName} onChange={(event) => setLegalName(event.target.value)} placeholder="Estudi Vidal SL" />
+                    <Input
+                      id="org-name"
+                      autoComplete="organization"
+                      value={legalName}
+                      disabled={!registerOpen}
+                      onChange={(event) => setLegalName(event.target.value)}
+                      placeholder="Estudi Vidal SL"
+                    />
                   </Field>
                   <Field id="org-tax" label={t("common.taxId")} error={errors.taxId}>
-                    <Input id="org-tax" value={taxId} onChange={(event) => setTaxId(event.target.value.toUpperCase())} placeholder="B12345678" />
+                    <Input
+                      id="org-tax"
+                      value={taxId}
+                      disabled={!registerOpen}
+                      onChange={(event) => setTaxId(event.target.value.toUpperCase())}
+                      placeholder="B12345678"
+                    />
                   </Field>
                 </div>
               ) : null}
               {mode === "register" && registration?.inviteRequired ? (
                 <Field id="auth-invite" label={t("auth.inviteCode")} error={errors.inviteCode}>
-                  <Input id="auth-invite" autoComplete="off" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} />
+                  <Input
+                    id="auth-invite"
+                    autoComplete="off"
+                    value={inviteCode}
+                    disabled={!registerOpen}
+                    onChange={(event) => setInviteCode(event.target.value)}
+                  />
                 </Field>
               ) : null}
               <ErrorBanner message={error} />
-              <Button type="submit" size="lg" disabled={busy}>
-                {busy ? t("common.wait") : mode === "login" ? t("auth.submitLogin") : t("auth.submitRegister")}
+              <Button type="submit" size="lg" disabled={busy || (mode === "register" && !registerOpen)}>
+                {busy
+                  ? t("common.wait")
+                  : mode === "login"
+                    ? t("auth.submitLogin")
+                    : registerOpen
+                      ? t("auth.submitRegister")
+                      : t("auth.registerDisabledSubmit")}
               </Button>
             </form>
+
+            {/* Navigation toggle link */}
+            <div className="text-center text-xs text-muted-foreground pt-1">
+              {mode === "login" ? (
+                <span>
+                  {t("auth.noAccount")}{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode("register")}
+                    className="font-medium text-primary underline-offset-4 hover:underline focus:outline-none"
+                  >
+                    {t("auth.goToRegister")}
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  {t("auth.hasAccount")}{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode("login")}
+                    className="font-medium text-primary underline-offset-4 hover:underline focus:outline-none"
+                  >
+                    {t("auth.goToLogin")}
+                  </button>
+                </span>
+              )}
+            </div>
           </CardContent>
         </Card>
       </section>

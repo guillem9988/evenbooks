@@ -148,6 +148,14 @@ export type Dict = {
     googleSuccess: string;
     googleFailed: string;
     googleNotConfigured: string;
+    noAccount: string;
+    hasAccount: string;
+    goToRegister: string;
+    goToLogin: string;
+    registerDisabledTitle: string;
+    registerDisabledMessage: string;
+    registerDisabledBadge: string;
+    registerDisabledSubmit: string;
   };
   home: {
     title: string;

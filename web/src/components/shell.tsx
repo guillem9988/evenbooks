@@ -96,6 +96,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
 function Frame({ children }: { children: React.ReactNode }) {
   const { ready, organizationId } = useOrganization();
+  const pathname = usePathname();
   const t = useT();
 
   if (!ready) {
@@ -103,7 +104,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   }
 
   if (!organizationId) {
-    return <AuthScreen />;
+    const isRegister = pathname === "/registre" || pathname === "/register";
+    return <AuthScreen initialMode={isRegister ? "register" : "login"} />;
   }
 
   return (
