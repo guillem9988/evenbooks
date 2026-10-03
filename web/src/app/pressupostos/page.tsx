@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
-import { ArrowRightLeftIcon, PlusIcon, UsersIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowRightLeftIcon, FileDownIcon, MoreHorizontalIcon, PlusIcon, Trash2Icon, UsersIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DocumentDialog, nextSeries, type CatalogPick, type Contact, type DocumentPayload } from "@/components/document-form";
@@ -23,7 +29,7 @@ import {
   useLoad,
 } from "@/components/ui-kit";
 import { useT } from "@/i18n";
-import { api } from "@/lib/api";
+import { api, apiPath } from "@/lib/api";
 import { euros } from "@/lib/money";
 
 interface Quote {
@@ -75,6 +81,13 @@ export default function QuotesPage() {
   const open = quotes.filter((quote) => quote.status === "OPEN");
   const visible = filter === "ALL" ? quotes : quotes.filter((quote) => quote.status === filter);
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("nou") === "1") {
+      setCreating(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
   async function create(payload: DocumentPayload) {
     await api(`/organizations/${organizationId}/quotes`, {
       method: "POST",
@@ -112,12 +125,46 @@ export default function QuotesPage() {
     }
   }
 
-  const convertButton = (quote: Quote) =>
-    quote.status === "OPEN" ? (
-      <Button type="button" variant="outline" size="sm" onClick={() => startConvert(quote)}>
-        <ArrowRightLeftIcon /> {t("quotes.convert")}
-      </Button>
-    ) : null;
+  async function deleteQuote(quote: Quote) {
+    if (!confirm(t("quotes.deleteConfirm"))) return;
+    try {
+      await api(`/organizations/${organizationId}/quotes/${quote.id}`, { method: "DELETE" });
+      notifySuccess(t("quotes.deleteSuccess"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("quotes.deleteFailed"));
+    }
+  }
+
+  const quoteActions = (quote: Quote) => (
+    <div className="flex items-center justify-end gap-1.5">
+      {quote.status === "OPEN" ? (
+        <Button type="button" variant="outline" size="sm" onClick={() => startConvert(quote)}>
+          <ArrowRightLeftIcon className="size-3.5" /> {t("quotes.convert")}
+        </Button>
+      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button type="button" variant="ghost" size="icon-sm" aria-label={`Més accions per a ${quote.seriesNumber}`} />}
+        >
+          <MoreHorizontalIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem render={<a href={apiPath(`/organizations/${organizationId}/quotes/${quote.id}.pdf`)} />}>
+            <FileDownIcon /> {t("quotes.downloadPdf")}
+          </DropdownMenuItem>
+          {quote.status === "OPEN" ? (
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => void deleteQuote(quote)}
+            >
+              <Trash2Icon /> {t("quotes.deleteQuote")}
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
 
   return (
     <>
@@ -192,7 +239,7 @@ export default function QuotesPage() {
                           <TableCell>
                             <QuoteBadge status={quote.status} />
                           </TableCell>
-                          <TableCell className="text-right">{convertButton(quote)}</TableCell>
+                          <TableCell className="text-right">{quoteActions(quote)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -212,7 +259,7 @@ export default function QuotesPage() {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-lg font-semibold tabular-nums">{euros(quote.totalAmountCents)}</p>
-                        {convertButton(quote)}
+                        {quoteActions(quote)}
                       </div>
                     </li>
                   ))}

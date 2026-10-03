@@ -5,18 +5,20 @@ import Link from "next/link";
 import {
   FileTextIcon,
   PencilIcon,
+  PlusIcon,
   ReceiptIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   SearchIcon,
   SparklesIcon,
+  Trash2Icon,
   UploadIcon,
   XIcon,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { EditExpenseDialog, type ExpenseItem } from "@/components/edit-expense-dialog";
+import { EditExpenseDialog, ManualExpenseDialog, type ExpenseItem } from "@/components/edit-expense-dialog";
 import { useOrganizationId } from "@/components/shell";
 import { ExpenseStatusBadge } from "@/components/status-badges";
 import {
@@ -60,6 +62,14 @@ export default function ExpensesPage() {
   const [dateTo, setDateTo] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+  const [creatingManual, setCreatingManual] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("nova") === "1") {
+      setCreatingManual(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     const body = await api<{ expenses: ExpenseItem[] }>(`/organizations/${organizationId}/expenses`);
@@ -135,6 +145,17 @@ export default function ExpensesPage() {
     }
   }
 
+  async function quickDeleteExpense(row: ExpenseItem) {
+    if (!confirm(t("expenses.deleteConfirm"))) return;
+    try {
+      await api(`/organizations/${organizationId}/invoices/${row.id}`, { method: "DELETE" });
+      setData((current) => current?.filter((item) => item.id !== row.id) ?? current);
+      notifySuccess(t("expenses.deleteExpenseSuccess"));
+    } catch (cause) {
+      notifyError(cause, t("expenses.deleteExpenseFailed"));
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -147,6 +168,9 @@ export default function ExpensesPage() {
             </Link>
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCwIcon /> {t("expenses.refresh")}
+            </Button>
+            <Button variant="outline" onClick={() => setCreatingManual(true)}>
+              <PlusIcon /> {t("expenses.newManual")}
             </Button>
             <Button onClick={() => setUploading(true)}>
               <UploadIcon /> {t("expenses.upload")}
@@ -179,9 +203,14 @@ export default function ExpensesPage() {
               title={t("expenses.empty")}
               hint={t("expenses.emptyHint")}
               action={
-                <Button onClick={() => setUploading(true)}>
-                  <UploadIcon /> {t("expenses.upload")}
-                </Button>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <Button variant="outline" onClick={() => setCreatingManual(true)}>
+                    <PlusIcon /> {t("expenses.newManual")}
+                  </Button>
+                  <Button onClick={() => setUploading(true)}>
+                    <UploadIcon /> {t("expenses.upload")}
+                  </Button>
+                </div>
               }
             />
           ) : (
@@ -339,6 +368,15 @@ export default function ExpensesPage() {
                                 >
                                   <PencilIcon className="size-3.5" />
                                 </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  title={t("expenses.deleteExpense")}
+                                  onClick={() => void quickDeleteExpense(row)}
+                                >
+                                  <Trash2Icon className="size-3.5" />
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -389,14 +427,25 @@ export default function ExpensesPage() {
                               </Button>
                             ) : null}
                           </div>
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setEditingExpense(row)}
-                          >
-                            <PencilIcon className="size-3" />
-                            {t("common.edit")}
-                          </Button>
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => setEditingExpense(row)}
+                            >
+                              <PencilIcon className="size-3" />
+                              {t("common.edit")}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              title={t("expenses.deleteExpense")}
+                              onClick={() => void quickDeleteExpense(row)}
+                            >
+                              <Trash2Icon className="size-3" />
+                            </Button>
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -431,6 +480,15 @@ export default function ExpensesPage() {
         multiple
         submitLabel={(count) => (count > 1 ? t("expenses.uploadMany", { count }) : t("expenses.uploadOne"))}
         onUpload={upload}
+      />
+
+      <ManualExpenseDialog
+        open={creatingManual}
+        onOpenChange={setCreatingManual}
+        organizationId={organizationId}
+        onCreated={(created) => {
+          setData((current) => [created, ...(current ?? [])]);
+        }}
       />
     </>
   );

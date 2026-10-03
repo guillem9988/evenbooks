@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { Prisma, QuoteStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import { cents, day, findOrganization, parseDay, readUuid } from "./org-params.js";
+import { renderQuotePdf } from "../billing/invoice-pdf.js";
 import { readLines } from "./document-lines.js";
 import { presentIssued } from "./issued-invoices.js";
 
@@ -165,6 +166,75 @@ export function registerQuoteRoutes(app: FastifyInstance, prisma: PrismaClient):
       }
       throw error;
     }
+  });
+
+  app.get("/organizations/:organizationId/quotes/:quoteId.pdf", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const quoteId = readUuid((request.params as { quoteId?: string }).quoteId, "quoteId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (quoteId instanceof Error) {
+      return reply.code(400).send({ error: quoteId.message });
+    }
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { legalName: true, taxId: true },
+    });
+    if (organization === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, organizationId },
+      include: { contact: true, lines: true },
+    });
+    if (quote === null) {
+      return reply.code(404).send({ error: "Quote not found" });
+    }
+    const pdf = await renderQuotePdf({
+      legalName: organization.legalName,
+      taxId: organization.taxId,
+      contactName: quote.contact.legalName,
+      contactTaxId: quote.contact.taxId,
+      seriesNumber: quote.seriesNumber,
+      invoiceDate: day(quote.quoteDate) ?? "",
+      baseAmountCents: quote.baseAmountCents,
+      taxAmountCents: quote.taxAmountCents,
+      totalAmountCents: quote.totalAmountCents,
+      lines: quote.lines,
+    });
+    const filename = `${quote.seriesNumber.replace(/[^\w.-]+/g, "_")}.pdf`;
+    return reply
+      .header("content-type", "application/pdf")
+      .header("content-disposition", `attachment; filename="${filename}"`)
+      .send(Buffer.from(pdf));
+  });
+
+  app.delete("/organizations/:organizationId/quotes/:quoteId", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const quoteId = readUuid((request.params as { quoteId?: string }).quoteId, "quoteId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (quoteId instanceof Error) {
+      return reply.code(400).send({ error: quoteId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, organizationId },
+    });
+    if (quote === null) {
+      return reply.code(404).send({ error: "Quote not found" });
+    }
+    if (quote.status === QuoteStatus.CONVERTED || quote.issuedInvoiceId !== null) {
+      return reply.code(409).send({ error: "Cannot delete a converted quote" });
+    }
+    await prisma.quote.delete({
+      where: { id: quote.id },
+    });
+    return reply.send({ ok: true, id: quote.id });
   });
 }
 

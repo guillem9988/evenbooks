@@ -142,6 +142,9 @@ function Overview({ data }: { data: OverviewData }) {
   const openQuotes = quotes.filter((quote) => quote.status === "OPEN");
 
   const tasks: Task[] = [];
+  const incomeNum = Number(dashboard.incomeCents);
+  const profitNum = Number(dashboard.profitCents);
+  const marginPct = incomeNum > 0 ? Math.round((profitNum / incomeNum) * 100) : null;
   if (overdue.length > 0) {
     tasks.push({
       key: "overdue",
@@ -214,7 +217,7 @@ function Overview({ data }: { data: OverviewData }) {
         <KpiCard
           label={t("home.profit")}
           value={euros(dashboard.profitCents)}
-          hint={t("home.profitHint")}
+          hint={marginPct !== null ? `${t("home.profitHint")} · ${marginPct}% ${t("home.margin").toLowerCase()}` : t("home.profitHint")}
           icon={TrendingUpIcon}
           tone={dashboard.profitCents.startsWith("-") ? "negative" : "positive"}
         />
@@ -227,6 +230,21 @@ function Overview({ data }: { data: OverviewData }) {
           })}
           icon={ScaleIcon}
         />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" render={<Link href="/ingressos?nova=1" />}>
+          <PlusIcon /> {t("home.newInvoice")}
+        </Button>
+        <Button variant="outline" size="sm" render={<Link href="/pressupostos?nou=1" />}>
+          <FileTextIcon /> {t("home.newQuote")}
+        </Button>
+        <Button variant="outline" size="sm" render={<Link href="/despeses?nova=1" />}>
+          <ReceiptIcon /> {t("home.newExpense")}
+        </Button>
+        <Button variant="outline" size="sm" render={<Link href="/banc" />}>
+          <LandmarkIcon /> {t("home.importBank")}
+        </Button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">

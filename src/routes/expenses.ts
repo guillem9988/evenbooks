@@ -46,6 +46,81 @@ export function registerExpenseRoutes(app: FastifyInstance, prisma: PrismaClient
     });
   });
 
+  app.post("/organizations/:organizationId/expenses", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+
+    const body = (request.body as {
+      vendorName?: unknown;
+      vendorTaxId?: unknown;
+      invoiceNumber?: unknown;
+      invoiceDate?: unknown;
+      baseAmountCents?: unknown;
+      taxAmountCents?: unknown;
+      totalAmountCents?: unknown;
+      expenseCategory?: unknown;
+    }) ?? {};
+
+    const totalCents = parseCentsInput(body.totalAmountCents);
+    if (totalCents === undefined || totalCents === null || totalCents <= 0n) {
+      return reply.code(400).send({ error: "totalAmountCents must be a positive integer" });
+    }
+
+    const baseCents = parseCentsInput(body.baseAmountCents);
+    const taxCents = parseCentsInput(body.taxAmountCents);
+
+    let category: ExpenseCategory | null = null;
+    if (typeof body.expenseCategory === "string" && CATEGORIES.has(body.expenseCategory)) {
+      category = body.expenseCategory as ExpenseCategory;
+    }
+
+    const invoiceDate = body.invoiceDate ? parseDay(body.invoiceDate) : new Date();
+
+    const created = await prisma.invoice.create({
+      data: {
+        organizationId,
+        storageKey: "",
+        originalFilename: "Despesa manual",
+        mimeType: "",
+        fileSizeBytes: 0,
+        status: InvoiceStatus.PARSED,
+        vendorName: typeof body.vendorName === "string" ? body.vendorName.trim().slice(0, 255) || null : null,
+        vendorTaxId: typeof body.vendorTaxId === "string" ? body.vendorTaxId.trim().toUpperCase().slice(0, 50) || null : null,
+        invoiceNumber: typeof body.invoiceNumber === "string" ? body.invoiceNumber.trim().slice(0, 100) || null : null,
+        invoiceDate,
+        baseAmountCents: baseCents ?? null,
+        taxAmountCents: taxCents ?? null,
+        totalAmountCents: totalCents,
+        expenseCategory: category,
+      },
+    });
+
+    reconcileOrganization(prisma, organizationId).catch((err) => {
+      request.log.warn({ err }, "could not reconcile after creating manual expense");
+    });
+
+    return reply.code(201).send({
+      id: created.id,
+      vendorName: created.vendorName,
+      vendorTaxId: created.vendorTaxId,
+      invoiceNumber: created.invoiceNumber,
+      invoiceDate: day(created.invoiceDate),
+      status: created.status,
+      baseAmountCents: cents(created.baseAmountCents),
+      totalAmountCents: cents(created.totalAmountCents),
+      taxAmountCents: cents(created.taxAmountCents),
+      expenseCategory: created.expenseCategory,
+      originalFilename: created.originalFilename,
+      mimeType: created.mimeType,
+      hasFile: false,
+    });
+  });
+
   app.patch("/organizations/:organizationId/invoices/:invoiceId", async (request, reply) => {
     const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
     const invoiceId = readUuid((request.params as { invoiceId?: string }).invoiceId, "invoiceId");

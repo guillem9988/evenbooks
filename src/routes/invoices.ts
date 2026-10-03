@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Queue } from "bullmq";
 import type { FastifyInstance } from "fastify";
-import { InvoiceStatus, type PrismaClient } from "../../generated/prisma/client.js";
+import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { deleteObject, getObject, putObject } from "../lib/storage.js";
 
@@ -132,10 +132,23 @@ export function registerInvoiceRoutes(
 
     const invoice = await prisma.invoice.findFirst({
       where: { id: invoiceId, organizationId },
-      select: { id: true, storageKey: true },
+      select: {
+        id: true,
+        storageKey: true,
+        reconciliation: { select: { transactionId: true } },
+      },
     });
     if (invoice === null) {
       return reply.code(404).send({ error: "Invoice not found" });
+    }
+
+    if (invoice.reconciliation?.transactionId) {
+      await prisma.bankTransaction.update({
+        where: { id: invoice.reconciliation.transactionId },
+        data: { matchStatus: MatchStatus.UNMATCHED },
+      }).catch((err) => {
+        request.log.warn({ err, invoiceId }, "could not reset bank transaction matchStatus on invoice delete");
+      });
     }
 
     if (invoice.storageKey) {

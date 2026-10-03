@@ -284,3 +284,203 @@ export function EditExpenseDialog({
     </FormDialog>
   );
 }
+
+export function ManualExpenseDialog({
+  open,
+  onOpenChange,
+  organizationId,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  organizationId: string;
+  onCreated: (created: ExpenseItem) => void;
+}) {
+  const t = useT();
+  const [vendorName, setVendorName] = useState("");
+  const [vendorTaxId, setVendorTaxId] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [baseAmount, setBaseAmount] = useState("");
+  const [taxAmount, setTaxAmount] = useState("");
+  const [totalAmount, setTotalAmount] = useState("");
+  const [category, setCategory] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setVendorName("");
+      setVendorTaxId("");
+      setInvoiceNumber("");
+      setInvoiceDate(new Date().toISOString().slice(0, 10));
+      setBaseAmount("");
+      setTaxAmount("");
+      setTotalAmount("");
+      setCategory("");
+      setError(null);
+    }
+  }, [open]);
+
+  function autoCalculateVat() {
+    const baseCentsStr = parseEuroInput(baseAmount);
+    if (!baseCentsStr) return;
+    const base = BigInt(baseCentsStr);
+    const vat = (base * 21n + 50n) / 100n;
+    const total = base + vat;
+    setTaxAmount(euroInput(vat.toString()));
+    setTotalAmount(euroInput(total.toString()));
+  }
+
+  async function submit() {
+    const totalCents = totalAmount.trim() ? parseEuroInput(totalAmount) : null;
+    if (!totalCents || BigInt(totalCents) <= 0n) {
+      setError(t("expenses.totalAmount"));
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+
+    const baseCents = baseAmount.trim() ? parseEuroInput(baseAmount) : null;
+    const taxCents = taxAmount.trim() ? parseEuroInput(taxAmount) : null;
+
+    try {
+      const created = await api<ExpenseItem>(`/organizations/${organizationId}/expenses`, {
+        method: "POST",
+        body: JSON.stringify({
+          vendorName: vendorName.trim() || null,
+          vendorTaxId: vendorTaxId.trim() || null,
+          invoiceNumber: invoiceNumber.trim() || null,
+          invoiceDate: invoiceDate.trim() || null,
+          baseAmountCents: baseCents,
+          taxAmountCents: taxCents,
+          totalAmountCents: totalCents,
+          expenseCategory: category.trim() || null,
+        }),
+      });
+
+      notifySuccess(t("expenses.newManualSuccess"));
+      onCreated(created);
+      onOpenChange(false);
+    } catch (cause) {
+      notifyError(cause, t("expenses.newManualFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("expenses.newManual")}
+      description={t("expenses.newManualDescription")}
+      submitLabel={t("expenses.newManualSubmit")}
+      busy={busy}
+      onSubmit={submit}
+      wide
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field id="manual-vendor-name" label={t("expenses.vendor")}>
+          <Input
+            id="manual-vendor-name"
+            value={vendorName}
+            onChange={(e) => setVendorName(e.target.value)}
+            placeholder="Ex. Autopistes, Restaurant Can Pere, Iberia..."
+            autoFocus
+          />
+        </Field>
+
+        <Field id="manual-tax-id" label={t("expenses.vendorTaxId")}>
+          <Input
+            id="manual-tax-id"
+            value={vendorTaxId}
+            onChange={(e) => setVendorTaxId(e.target.value)}
+            placeholder="Ex. B12345678, ESB98765432..."
+          />
+        </Field>
+
+        <Field id="manual-invoice-number" label={t("expenses.invoiceNumber")}>
+          <Input
+            id="manual-invoice-number"
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+            placeholder="Ex. T-2026-0042"
+          />
+        </Field>
+
+        <Field id="manual-invoice-date" label={t("expenses.invoiceDate")}>
+          <Input
+            id="manual-invoice-date"
+            type="date"
+            value={invoiceDate}
+            onChange={(e) => setInvoiceDate(e.target.value)}
+          />
+        </Field>
+      </div>
+
+      <div className="rounded-xl border p-3 bg-muted/10">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("common.amounts")}
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={autoCalculateVat}
+            title={t("expenses.calculateVat")}
+          >
+            <CalculatorIcon className="size-3.5" />
+            {t("expenses.calculateVat")}
+          </Button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field id="manual-base-amount" label={t("expenses.baseAmount")}>
+            <EuroInput
+              id="manual-base-amount"
+              value={baseAmount}
+              onChange={setBaseAmount}
+              placeholder="0,00"
+            />
+          </Field>
+          <Field id="manual-tax-amount" label={t("expenses.taxAmount")}>
+            <EuroInput
+              id="manual-tax-amount"
+              value={taxAmount}
+              onChange={setTaxAmount}
+              placeholder="0,00"
+            />
+          </Field>
+          <Field id="manual-total-amount" label={t("expenses.totalAmount")} error={error}>
+            <EuroInput
+              id="manual-total-amount"
+              value={totalAmount}
+              onChange={(v) => {
+                setTotalAmount(v);
+                setError(null);
+              }}
+              placeholder="0,00"
+            />
+          </Field>
+        </div>
+      </div>
+
+      <Field id="manual-category" label={t("expenses.category")}>
+        <NativeSelect
+          id="manual-category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
+          <option value="">{t("expenses.noCategory")}</option>
+          {CATEGORIES.map(([code, key]) => (
+            <option key={code} value={code}>
+              {t(key)}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+    </FormDialog>
+  );
+}

@@ -205,6 +205,11 @@ export type Dict = {
     quoteMany: string;
     quoteDetail: string;
     quoteCta: string;
+    quickActions: string;
+    newExpense: string;
+    newQuote: string;
+    margin: string;
+    marginHint: string;
   };
   income: {
     title: string;
@@ -293,6 +298,11 @@ export type Dict = {
     convertSubmit: string;
     invoiceNumber: string;
     invoiceNumberHint: string;
+    downloadPdf: string;
+    deleteQuote: string;
+    deleteConfirm: string;
+    deleteSuccess: string;
+    deleteFailed: string;
   };
   recurring: {
     title: string;
@@ -430,6 +440,11 @@ export type Dict = {
     dateTo: string;
     clearFilters: string;
     showingCount: string;
+    newManual: string;
+    newManualDescription: string;
+    newManualSubmit: string;
+    newManualSuccess: string;
+    newManualFailed: string;
   };
   bank: {
     title: string;
