@@ -67,6 +67,7 @@ interface InvoiceLine {
   invoiceDate: string | null;
   totalAmountCents: string | null;
   currency?: string | null;
+  isIssued?: boolean;
 }
 
 interface Breakdown {
@@ -113,6 +114,7 @@ interface CandidateInvoice extends InvoiceLine {
 interface AiMatchResult {
   transactionId: string;
   invoiceId: string;
+  isIssued?: boolean;
   confidenceScore: string;
   reason: string;
   transaction: BankLine;
@@ -237,7 +239,11 @@ export function ReviewDesk() {
       async () => {
         await api(`/organizations/${organizationId}/reconciliation/matches`, {
           method: "POST",
-          body: JSON.stringify({ transactionId: row.transaction.id, invoiceId: row.invoice.id }),
+          body: JSON.stringify({
+            transactionId: row.transaction.id,
+            invoiceId: row.invoice.id,
+            isIssued: row.invoice.isIssued,
+          }),
         });
         await reload();
         return t("bank.confirmed");
@@ -305,6 +311,7 @@ export function ReviewDesk() {
           body: JSON.stringify({
             transactionId: match.transactionId,
             invoiceId: match.invoiceId,
+            isIssued: match.isIssued ?? match.invoice.isIssued,
           }),
         });
         setAiResults((prev) =>
@@ -335,6 +342,7 @@ export function ReviewDesk() {
               body: JSON.stringify({
                 transactionId: m.transactionId,
                 invoiceId: m.invoiceId,
+                isIssued: m.isIssued ?? m.invoice.isIssued,
               }),
             });
             count++;
@@ -489,15 +497,27 @@ export function ReviewDesk() {
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground uppercase">
-                            {t("bank.invoice")} · {formatDate(match.invoice.invoiceDate)}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs text-muted-foreground uppercase">
+                              {match.invoice.isIssued ? t("bank.issuedInvoiceBadge") : t("bank.invoice")} · {formatDate(match.invoice.invoiceDate)}
+                            </p>
+                            {match.invoice.isIssued && (
+                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                {t("bank.clientPaymentBadge")}
+                              </span>
+                            )}
+                          </div>
                           <p className="truncate font-medium">
                             {match.invoice.vendorName ?? t("bank.unknownVendor")}
                           </p>
-                          <p className="text-sm font-semibold tabular-nums">
-                            {euros(match.invoice.totalAmountCents)}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold tabular-nums">
+                              {euros(match.invoice.totalAmountCents)}
+                            </p>
+                            {match.invoice.invoiceNumber && (
+                              <span className="text-xs text-muted-foreground font-mono">({match.invoice.invoiceNumber})</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center justify-between gap-2 pt-1 border-t border-violet-100 dark:border-violet-900">
@@ -741,8 +761,8 @@ export function ReviewDesk() {
         onOpenChange={setImporting}
         title={t("bank.importTitle")}
         description={t("bank.importDescription")}
-        accept=".csv,.xlsx,.xls,.ofx,.qfx,.n43,.c43,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/x-ofx"
-        extensions={[".n43", ".c43", ".csv", ".xlsx", ".xls", ".ofx", ".qfx", ".txt"]}
+        accept=".csv,.xlsx,.xls,.ofx,.qfx,.n43,.c43,.txt,.pdf,text/csv,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/x-ofx"
+        extensions={[".n43", ".c43", ".csv", ".xlsx", ".xls", ".ofx", ".qfx", ".txt", ".pdf"]}
         submitLabel={() => t("bank.importSubmit")}
         onUpload={uploadStatement}
       />
@@ -808,11 +828,23 @@ function PairRow({ row, kind, action }: { row: Suggestion; kind: MatchKind; acti
           <p className="text-sm tabular-nums font-semibold">{euros(row.transaction.amountCents)}</p>
         </div>
         <div className="min-w-0">
-          <p className="text-xs tracking-wide text-muted-foreground uppercase">
-            {t("bank.invoice")} · {formatDate(row.invoice.invoiceDate)}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-xs tracking-wide text-muted-foreground uppercase">
+              {row.invoice.isIssued ? t("bank.issuedInvoiceBadge") : t("bank.invoice")} · {formatDate(row.invoice.invoiceDate)}
+            </p>
+            {row.invoice.isIssued && (
+              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                {t("bank.clientPaymentBadge")}
+              </span>
+            )}
+          </div>
           <p className="truncate font-medium">{row.invoice.vendorName ?? t("bank.unknownVendor")}</p>
-          <p className="text-sm tabular-nums">{euros(row.invoice.totalAmountCents)}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm tabular-nums">{euros(row.invoice.totalAmountCents)}</p>
+            {row.invoice.invoiceNumber && (
+              <span className="text-xs text-muted-foreground font-mono">({row.invoice.invoiceNumber})</span>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
@@ -944,18 +976,28 @@ function AssignInvoiceDialog({
   onAssigned: () => void;
 }) {
   const t = useT();
+  const isCredit = BigInt(transaction.amountCents) > 0n;
+  const [tabType, setTabType] = useState<"issued" | "expense">(isCredit ? "issued" : "expense");
   const [search, setSearch] = useState("");
   const [candidates, setCandidates] = useState<CandidateInvoice[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (open) {
+      setTabType(BigInt(transaction.amountCents) > 0n ? "issued" : "expense");
+      setSearch("");
+    }
+  }, [open, transaction.id, transaction.amountCents]);
+
   const fetchCandidates = useCallback(
-    async (searchTerm: string) => {
+    async (searchTerm: string, type: "issued" | "expense") => {
       setLoading(true);
       try {
         const query = new URLSearchParams({
           transactionId: transaction.id,
           search: searchTerm,
+          type,
         });
         const res = await api<{ candidates: CandidateInvoice[] }>(
           `/organizations/${organizationId}/reconciliation/candidate-invoices?${query.toString()}`,
@@ -972,18 +1014,19 @@ function AssignInvoiceDialog({
 
   useEffect(() => {
     if (open) {
-      void fetchCandidates("");
+      void fetchCandidates(search, tabType);
     }
-  }, [open, fetchCandidates]);
+  }, [open, search, tabType, fetchCandidates]);
 
-  async function handleAssign(invoiceId: string) {
-    setBusyId(invoiceId);
+  async function handleAssign(inv: CandidateInvoice) {
+    setBusyId(inv.id);
     try {
       await api(`/organizations/${organizationId}/reconciliation/matches`, {
         method: "POST",
         body: JSON.stringify({
           transactionId: transaction.id,
-          invoiceId,
+          invoiceId: inv.id,
+          isIssued: inv.isIssued ?? (tabType === "issued"),
         }),
       });
       notifySuccess(t("bank.assignSuccess"));
@@ -999,12 +1042,19 @@ function AssignInvoiceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>{t("bank.assignTitle")}</DialogTitle>
+          <DialogTitle>
+            {isCredit ? t("bank.assignClientTitle") : t("bank.assignTitle")}
+          </DialogTitle>
           <DialogDescription>
-            {t("bank.assignDescription", {
-              amount: euros(transaction.amountCents),
-              date: formatDate(transaction.transactionDate),
-            })}
+            {isCredit
+              ? t("bank.assignClientDescription", {
+                  amount: euros(transaction.amountCents),
+                  date: formatDate(transaction.transactionDate),
+                })
+              : t("bank.assignDescription", {
+                  amount: euros(transaction.amountCents),
+                  date: formatDate(transaction.transactionDate),
+                })}
           </DialogDescription>
         </DialogHeader>
 
@@ -1012,21 +1062,50 @@ function AssignInvoiceDialog({
         <div className="rounded-lg bg-muted/60 p-2.5 text-xs flex flex-col gap-1 border">
           <div className="flex justify-between font-semibold">
             <span className="text-muted-foreground">{formatDate(transaction.transactionDate)}</span>
-            <span className="tabular-nums text-sm">{euros(transaction.amountCents)}</span>
+            <span className={`tabular-nums text-sm font-bold ${isCredit ? "text-emerald-600 dark:text-emerald-400" : ""}`}>
+              {euros(transaction.amountCents)}
+            </span>
           </div>
           <p className="truncate text-foreground font-mono">{transaction.rawDescription}</p>
+        </div>
+
+        {/* Tabs to switch between issued sales and supplier expenses */}
+        <div className="flex border-b text-xs font-medium">
+          <button
+            type="button"
+            className={`px-3 py-1.5 border-b-2 transition-colors ${
+              tabType === "issued"
+                ? "border-emerald-600 text-emerald-600 dark:text-emerald-400 font-semibold"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setTabType("issued")}
+          >
+            {t("bank.tabIssuedInvoices")}
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1.5 border-b-2 transition-colors ${
+              tabType === "expense"
+                ? "border-primary text-primary font-semibold"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setTabType("expense")}
+          >
+            {t("bank.tabExpenseInvoices")}
+          </button>
         </div>
 
         {/* Search */}
         <div className="relative">
           <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder={t("bank.assignSearchPlaceholder")}
+            placeholder={
+              tabType === "issued"
+                ? t("bank.assignClientSearchPlaceholder")
+                : t("bank.assignSearchPlaceholder")
+            }
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              void fetchCandidates(e.target.value);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-8"
           />
         </div>
@@ -1050,6 +1129,11 @@ function AssignInvoiceDialog({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-sm truncate">{inv.vendorName ?? t("bank.unknownVendor")}</p>
+                    {inv.isIssued && (
+                      <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                        {t("bank.issuedInvoiceBadge")}
+                      </span>
+                    )}
                     {inv.exactAmount && (
                       <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                         {t("bank.assignExactBadge")}
@@ -1057,7 +1141,7 @@ function AssignInvoiceDialog({
                     )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                    {inv.invoiceNumber && <span>Fra: {inv.invoiceNumber}</span>}
+                    {inv.invoiceNumber && <span>{inv.isIssued ? "Sèrie" : "Fra"}: {inv.invoiceNumber}</span>}
                     {inv.invoiceDate && <span>· {formatDate(inv.invoiceDate)}</span>}
                     {inv.vendorTaxId && <span>· {inv.vendorTaxId}</span>}
                   </div>
@@ -1067,7 +1151,7 @@ function AssignInvoiceDialog({
                 <Button
                   size="sm"
                   disabled={busyId !== null}
-                  onClick={() => handleAssign(inv.id)}
+                  onClick={() => handleAssign(inv)}
                   className={
                     inv.exactAmount
                       ? "bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600"

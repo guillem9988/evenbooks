@@ -21,6 +21,8 @@ export interface MatchTransaction {
   normalizedMerchant: string | null;
 }
 
+export type MatchTargetType = "EXPENSE" | "ISSUED";
+
 export interface MatchInvoice {
   id: string;
   vendorName: string | null;
@@ -31,6 +33,7 @@ export interface MatchInvoice {
   baseAmountCents: bigint | null;
   totalAmountCents: bigint | null;
   previouslyConfirmedVendor?: boolean;
+  targetType?: MatchTargetType;
 }
 
 export interface ScorePart {
@@ -53,7 +56,9 @@ export interface MatchingBreakdown {
 
 export interface ScoredPair {
   transactionId: string;
-  invoiceId: string;
+  invoiceId: string | null;
+  issuedInvoiceId?: string | null;
+  targetType: MatchTargetType;
   confidencePoints: number;
   confidenceScore: string;
   autoConfirm: boolean;
@@ -75,9 +80,13 @@ export function scorePair(transaction: MatchTransaction, invoice: MatchInvoice):
       10_000,
   );
 
+  const isIssued = invoice.targetType === "ISSUED";
+
   return {
     transactionId: transaction.id,
-    invoiceId: invoice.id,
+    invoiceId: isIssued ? null : invoice.id,
+    issuedInvoiceId: isIssued ? invoice.id : null,
+    targetType: isIssued ? "ISSUED" : "EXPENSE",
     confidencePoints,
     confidenceScore: formatPoints(confidencePoints),
     autoConfirm: confidencePoints >= AUTO_CONFIRM_MIN && currencyCompatible,

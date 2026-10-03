@@ -1,4 +1,10 @@
-import { InvoiceStatus, MatchStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
+import {
+  InvoiceStatus,
+  IssuedInvoiceStatus,
+  MatchStatus,
+  Prisma,
+  type PrismaClient,
+} from "../../generated/prisma/client.js";
 import { assignMatches } from "./assign.js";
 import { scorePair, type MatchInvoice, type MatchTransaction, type ScoredPair } from "./score.js";
 
@@ -11,7 +17,7 @@ export async function reconcileOrganization(
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<ReconcileResult> {
-  const [transactions, invoices, confirmedVendors] = await Promise.all([
+  const [transactions, invoices, issuedInvoices, confirmedVendors, confirmedClients] = await Promise.all([
     prisma.bankTransaction.findMany({
       where: { organizationId, matchStatus: MatchStatus.UNMATCHED },
     }),
@@ -22,22 +28,47 @@ export async function reconcileOrganization(
         reconciliation: null,
       },
     }),
+    prisma.issuedInvoice.findMany({
+      where: {
+        organizationId,
+        status: IssuedInvoiceStatus.UNPAID,
+        reconciliation: null,
+      },
+      include: {
+        contact: true,
+      },
+    }),
     confirmedVendorNames(prisma, organizationId),
+    confirmedClientNames(prisma, organizationId),
   ]);
 
-  const pairs = transactions.flatMap((transaction) =>
-    invoices.map((invoice) => scorePair(toTransaction(transaction), toInvoice(invoice, confirmedVendors))),
-  );
+  const pairs: ScoredPair[] = [];
+  for (const transaction of transactions) {
+    const tx = toTransaction(transaction);
+    if (transaction.amountCents < 0n) {
+      for (const invoice of invoices) {
+        pairs.push(scorePair(tx, toExpenseInvoice(invoice, confirmedVendors)));
+      }
+    } else if (transaction.amountCents > 0n) {
+      for (const issued of issuedInvoices) {
+        pairs.push(scorePair(tx, toIssuedInvoice(issued, confirmedClients)));
+      }
+    }
+  }
+
   const assignment = assignMatches(pairs);
 
   if (assignment.confirmed.length > 0) {
-    await prisma.$transaction(
-      assignment.confirmed.flatMap((pair) => [
+    const ops: Prisma.PrismaPromise<unknown>[] = [];
+    for (const pair of assignment.confirmed) {
+      const isIssued = pair.targetType === "ISSUED";
+      ops.push(
         prisma.reconciliationMatch.create({
           data: {
             organizationId,
             transactionId: pair.transactionId,
-            invoiceId: pair.invoiceId,
+            invoiceId: isIssued ? null : pair.invoiceId,
+            issuedInvoiceId: isIssued ? pair.issuedInvoiceId : null,
             confidenceScore: new Prisma.Decimal(pair.confidenceScore),
             isAutoConfirmed: true,
             matchingBreakdown: JSON.parse(JSON.stringify(pair.breakdown)) as Prisma.InputJsonValue,
@@ -48,8 +79,17 @@ export async function reconcileOrganization(
           where: { id: pair.transactionId },
           data: { matchStatus: MatchStatus.AUTO_MATCHED },
         }),
-      ]),
-    );
+      );
+      if (isIssued && pair.issuedInvoiceId) {
+        ops.push(
+          prisma.issuedInvoice.update({
+            where: { id: pair.issuedInvoiceId },
+            data: { status: IssuedInvoiceStatus.PAID },
+          }),
+        );
+      }
+    }
+    await prisma.$transaction(ops);
   }
 
   return assignment;
@@ -81,7 +121,15 @@ async function confirmedVendorNames(prisma: PrismaClient, organizationId: string
   return new Set(rows.flatMap((row) => (row.vendorName === null ? [] : [row.vendorName.toLowerCase()])));
 }
 
-function toInvoice(
+async function confirmedClientNames(prisma: PrismaClient, organizationId: string): Promise<Set<string>> {
+  const rows = await prisma.issuedInvoice.findMany({
+    where: { organizationId, reconciliation: { isNot: null } },
+    select: { contact: { select: { legalName: true } } },
+  });
+  return new Set(rows.map((row) => row.contact.legalName.toLowerCase()));
+}
+
+function toExpenseInvoice(
   row: {
     id: string;
     vendorName: string | null;
@@ -103,7 +151,36 @@ function toInvoice(
     currency: row.currency,
     baseAmountCents: row.baseAmountCents,
     totalAmountCents: row.totalAmountCents,
+    targetType: "EXPENSE",
     previouslyConfirmedVendor:
       row.vendorName !== null && confirmedVendors.has(row.vendorName.toLowerCase()),
+  };
+}
+
+function toIssuedInvoice(
+  row: {
+    id: string;
+    seriesNumber: string;
+    invoiceDate: Date;
+    baseAmountCents: bigint;
+    totalAmountCents: bigint;
+    contact: {
+      legalName: string;
+      taxId: string;
+    };
+  },
+  confirmedClients: Set<string>,
+): MatchInvoice {
+  return {
+    id: row.id,
+    vendorName: row.contact.legalName,
+    vendorTaxId: row.contact.taxId,
+    invoiceNumber: row.seriesNumber,
+    invoiceDate: row.invoiceDate,
+    currency: "EUR",
+    baseAmountCents: row.baseAmountCents,
+    totalAmountCents: row.totalAmountCents,
+    targetType: "ISSUED",
+    previouslyConfirmedVendor: confirmedClients.has(row.contact.legalName.toLowerCase()),
   };
 }

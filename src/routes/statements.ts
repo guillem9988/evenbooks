@@ -14,7 +14,12 @@ export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClie
 
     const organization = await prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { id: true },
+      select: {
+        id: true,
+        geminiApiKey: true,
+        openaiApiKey: true,
+        extractorModel: true,
+      },
     });
     if (organization === null) {
       return reply.code(404).send({ error: "Organization not found" });
@@ -35,7 +40,10 @@ export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClie
 
     let transactions;
     try {
-      transactions = await parseStatementFile(file.filename, await file.toBuffer());
+      transactions = await parseStatementFile(file.filename, await file.toBuffer(), {
+        apiKey: organization.geminiApiKey || process.env.GEMINI_API_KEY || null,
+        model: organization.extractorModel,
+      });
     } catch (error) {
       const message = error instanceof StatementFileError ? error.message : "Unreadable statement file";
       return reply.code(400).send({ error: message });

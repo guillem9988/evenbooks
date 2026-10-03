@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { InvoiceStatus, MatchStatus, Prisma } from "../../generated/prisma/client.js";
+import { ContactRole, InvoiceStatus, IssuedInvoiceStatus, MatchStatus, Prisma } from "../../generated/prisma/client.js";
 import { createDatabase } from "../lib/prisma.js";
 import { loadConfig } from "../config.js";
 import { reconcileOrganization } from "./reconcile.js";
@@ -82,6 +82,78 @@ describe("reconcileOrganization", () => {
     });
     expect(match.isAutoConfirmed).toBe(true);
     expect(match.confidenceScore.toFixed(4)).toBe(first.confirmed[0]?.confidenceScore);
+
+    await database.prisma.organization.delete({ where: { id: organization.id } });
+  });
+
+  it("auto-reconciles positive client payments with issued invoices and marks them PAID", async () => {
+    const organization = await database.prisma.organization.create({
+      data: { legalName: "Client Match SL", taxId: "B00000088" },
+    });
+    const contact = await database.prisma.contact.create({
+      data: {
+        organizationId: organization.id,
+        legalName: "Client Fidel SL",
+        taxId: "B99112233",
+        email: "client@fidel.test",
+        role: ContactRole.CLIENT,
+      },
+    });
+    const issuedInvoice = await database.prisma.issuedInvoice.create({
+      data: {
+        organizationId: organization.id,
+        contactId: contact.id,
+        seriesNumber: "FAC-2026-099",
+        invoiceDate: new Date("2026-03-10T00:00:00.000Z"),
+        baseAmountCents: 20000n,
+        taxAmountCents: 4200n,
+        totalAmountCents: 24200n,
+        status: IssuedInvoiceStatus.UNPAID,
+      },
+    });
+    const statement = await database.prisma.bankStatement.create({
+      data: {
+        organizationId: organization.id,
+        filename: "statement_income.csv",
+        totalTransactions: 1,
+      },
+    });
+    const incomeTx = await database.prisma.bankTransaction.create({
+      data: {
+        statementId: statement.id,
+        organizationId: organization.id,
+        transactionDate: new Date("2026-03-11T00:00:00.000Z"),
+        valueDate: new Date("2026-03-11T00:00:00.000Z"),
+        amountCents: 24200n, // +242.00 EUR
+        rawDescription: "TRANSF BANCARIA COBRAMENT FAC-2026-099 CLIENT FIDEL SL",
+      },
+    });
+
+    const result = await reconcileOrganization(database.prisma, organization.id);
+    expect(result.confirmed).toHaveLength(1);
+    expect(result.confirmed[0]?.transactionId).toBe(incomeTx.id);
+    expect(result.confirmed[0]?.issuedInvoiceId).toBe(issuedInvoice.id);
+    expect(result.confirmed[0]?.targetType).toBe("ISSUED");
+
+    // Verify bank transaction is AUTO_MATCHED
+    const updatedTx = await database.prisma.bankTransaction.findUniqueOrThrow({
+      where: { id: incomeTx.id },
+    });
+    expect(updatedTx.matchStatus).toBe(MatchStatus.AUTO_MATCHED);
+
+    // Verify issued invoice is marked as PAID
+    const updatedInvoice = await database.prisma.issuedInvoice.findUniqueOrThrow({
+      where: { id: issuedInvoice.id },
+    });
+    expect(updatedInvoice.status).toBe(IssuedInvoiceStatus.PAID);
+
+    // Verify match record in DB
+    const match = await database.prisma.reconciliationMatch.findUniqueOrThrow({
+      where: { transactionId: incomeTx.id },
+    });
+    expect(match.issuedInvoiceId).toBe(issuedInvoice.id);
+    expect(match.invoiceId).toBeNull();
+    expect(match.isAutoConfirmed).toBe(true);
 
     await database.prisma.organization.delete({ where: { id: organization.id } });
   });

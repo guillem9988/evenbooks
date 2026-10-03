@@ -14,11 +14,13 @@ export function assignMatches(pairs: readonly ScoredPair[]): Assignment {
     if (left.transactionId !== right.transactionId) {
       return left.transactionId < right.transactionId ? -1 : 1;
     }
-    return left.invoiceId < right.invoiceId ? -1 : left.invoiceId > right.invoiceId ? 1 : 0;
+    const leftTarget = left.targetType === "ISSUED" ? (left.issuedInvoiceId ?? "") : (left.invoiceId ?? "");
+    const rightTarget = right.targetType === "ISSUED" ? (right.issuedInvoiceId ?? "") : (right.invoiceId ?? "");
+    return leftTarget < rightTarget ? -1 : leftTarget > rightTarget ? 1 : 0;
   });
 
   const usedTransactions = new Set<string>();
-  const usedInvoices = new Set<string>();
+  const usedTargets = new Set<string>();
   const confirmed: ScoredPair[] = [];
   const suggestions: ScoredPair[] = [];
 
@@ -26,11 +28,12 @@ export function assignMatches(pairs: readonly ScoredPair[]): Assignment {
     if (pair.confidencePoints < SUGGESTION_MIN) {
       continue;
     }
-    if (usedTransactions.has(pair.transactionId) || usedInvoices.has(pair.invoiceId)) {
+    const targetKey = `${pair.targetType}:${pair.targetType === "ISSUED" ? pair.issuedInvoiceId : pair.invoiceId}`;
+    if (usedTransactions.has(pair.transactionId) || usedTargets.has(targetKey)) {
       continue;
     }
     usedTransactions.add(pair.transactionId);
-    usedInvoices.add(pair.invoiceId);
+    usedTargets.add(targetKey);
     if (pair.autoConfirm) {
       confirmed.push(pair);
     } else {

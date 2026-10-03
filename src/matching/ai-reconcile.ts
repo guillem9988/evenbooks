@@ -1,9 +1,10 @@
 import OpenAI from "openai";
-import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/prisma/client.js";
+import { InvoiceStatus, IssuedInvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/prisma/client.js";
 
 export interface AiMatchProposal {
   transactionId: string;
   invoiceId: string;
+  isIssued?: boolean;
   confidenceScore: string;
   reason: string;
 }
@@ -30,7 +31,7 @@ export async function aiReconcileOrganization(
   prisma: PrismaClient,
   organizationId: string,
 ): Promise<AiReconcileResult> {
-  const [organization, transactions, invoices] = await Promise.all([
+  const [organization, transactions, invoices, issuedInvoices] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: organizationId },
       select: {
@@ -56,6 +57,16 @@ export async function aiReconcileOrganization(
       orderBy: { invoiceDate: "desc" },
       take: 50,
     }),
+    prisma.issuedInvoice.findMany({
+      where: {
+        organizationId,
+        status: IssuedInvoiceStatus.UNPAID,
+        reconciliation: null,
+      },
+      include: { contact: true },
+      orderBy: { invoiceDate: "desc" },
+      take: 50,
+    }),
   ]);
 
   if (!organization || transactions.length === 0) {
@@ -69,7 +80,7 @@ export async function aiReconcileOrganization(
     return { aiMatches: [], classifications: [] };
   }
 
-  const prompt = buildReconcilePrompt(transactions, invoices);
+  const prompt = buildReconcilePrompt(transactions, invoices, issuedInvoices);
 
   let rawJson: string | null = null;
 
@@ -83,7 +94,7 @@ export async function aiReconcileOrganization(
     return { aiMatches: [], classifications: [] };
   }
 
-  return parseAiResponse(rawJson, transactions, invoices);
+  return parseAiResponse(rawJson, transactions, invoices, issuedInvoices);
 }
 
 function buildReconcilePrompt(
@@ -100,6 +111,16 @@ function buildReconcilePrompt(
     invoiceNumber: string | null;
     invoiceDate: Date | null;
     totalAmountCents: bigint | null;
+  }>,
+  issuedInvoices: Array<{
+    id: string;
+    seriesNumber: string;
+    invoiceDate: Date;
+    totalAmountCents: bigint;
+    contact: {
+      legalName: string;
+      taxId: string;
+    };
   }>,
 ): string {
   const txLines = transactions.map((t) => ({
@@ -118,33 +139,47 @@ function buildReconcilePrompt(
     invoiceNumber: inv.invoiceNumber,
   }));
 
+  const issuedLines = issuedInvoices.map((inv) => ({
+    id: inv.id,
+    date: inv.invoiceDate.toISOString().slice(0, 10),
+    totalEur: (Number(inv.totalAmountCents) / 100).toFixed(2),
+    clientName: inv.contact.legalName,
+    clientTaxId: inv.contact.taxId,
+    seriesNumber: inv.seriesNumber,
+  }));
+
   return `Ets un expert comptable i fiscal especialitzat en conciliació bancària d'empreses i autònoms.
-Analitza aquests moviments bancaris pendents i aquestes factures rebudes pendents.
+Analitza aquests moviments bancaris pendents, factures rebudes de despesa i factures emeses a clients.
 
 MOVIMENTS BANCARIS PENDENTS:
 ${JSON.stringify(txLines, null, 2)}
 
-FACTURES PENDENTS:
+FACTURES DE DESPESA (PROVEÏDORS) PENDENTS:
 ${JSON.stringify(invLines, null, 2)}
 
+FACTURES EMESES A CLIENTS PENDENTS DE COBRAMENT:
+${JSON.stringify(issuedLines, null, 2)}
+
 CRITERIS DE CONCILIACIÓ:
-1. Els moviments de despesa al banc tenen import negatiu (ex: -121.00 €) i coincideixen amb factures de total positiu (121.00 €).
-2. Tingues en compte noms comercials vs raó social:
+1. Els moviments de despesa al banc tenen import negatiu (ex: -121.00 €) i coincideixen amb factures de despesa (121.00 €).
+2. Els moviments d'ingrés al banc tenen import positiu (ex: +500.00 €) i coincideixen amb factures emeses a clients (cobraments de clients).
+3. Tingues en compte noms comercials vs raó social:
    - Ex: AMZN MKTP / AMAZON PAYMENTS -> Amazon
    - Ex: MAXI MOBILITY -> Cabify
-   - Ex: STRIPE / WORLDPAY / PAYPAL -> passarel·les de pagament de SaaS o botigues
+   - Ex: STRIPE / WORLDPAY / PAYPAL -> passarel·les de pagament de clients o botigues
    - Ex: ENDESA / IBERDROLA / NATURGY / ENERGIA XXI / AIGUES -> subministraments
    - Ex: REPSOL / CEPSA / BP / SHELL -> combustible / transports
-3. Revisa si part del número de factura o el NIF/CIF apareix al concepte bancari.
-4. Si un moviment és clarament un impost (AEAT, Model 303, 111, 130), Seguretat Social (TGSS, quota autònoms), comissió bancària (manteniment, targeta) o nòmina, NO el conciliïs amb factura: afegeix-lo a "classifications".
-5. Respon exclusivament en format JSON vàlid que segueixi aquest esquema:
+4. Revisa si part del número de factura, sèrie o el NIF/CIF o nom del client o proveïdor apareix al concepte bancari.
+5. Si un moviment és clarament un impost (AEAT, Model 303, 111, 130), Seguretat Social (TGSS, quota autònoms), comissió bancària (manteniment, targeta) o nòmina, NO el conciliïs amb factura: afegeix-lo a "classifications".
+6. Respon exclusivament en format JSON vàlid que segueixi aquest esquema:
 {
   "matches": [
     {
       "transactionId": "id del moviment",
-      "invoiceId": "id de la factura",
+      "invoiceId": "id de la factura (de despesa o emesa a client)",
+      "isIssued": false, // true si és una factura emesa a client, false si és de despesa
       "confidence": 0.95,
-      "reason": "Explicació breu i clara en català de per què coincideixen (ex: El concepte AMZN MKTP de -45,99 € correspon a la factura d'Amazon Web Services)"
+      "reason": "Explicació breu i clara en català de per què coincideixen"
     }
   ],
   "classifications": [
@@ -220,12 +255,14 @@ function parseAiResponse(
   rawJson: string,
   transactions: Array<{ id: string }>,
   invoices: Array<{ id: string }>,
+  issuedInvoices: Array<{ id: string }>,
 ): AiReconcileResult {
   try {
     const parsed = JSON.parse(rawJson) as {
       matches?: Array<{
         transactionId?: unknown;
         invoiceId?: unknown;
+        isIssued?: unknown;
         confidence?: unknown;
         reason?: unknown;
       }>;
@@ -237,7 +274,8 @@ function parseAiResponse(
     };
 
     const validTxIds = new Set(transactions.map((t) => t.id));
-    const validInvIds = new Set(invoices.map((inv) => inv.id));
+    const validExpenseIds = new Set(invoices.map((inv) => inv.id));
+    const validIssuedIds = new Set(issuedInvoices.map((inv) => inv.id));
 
     const aiMatches: AiMatchProposal[] = [];
     const usedTxs = new Set<string>();
@@ -249,13 +287,19 @@ function parseAiResponse(
         const invId = typeof item.invoiceId === "string" ? item.invoiceId : "";
         const confNum = typeof item.confidence === "number" ? item.confidence : 0.85;
         const reason = typeof item.reason === "string" ? item.reason : "Coincidència detectada per IA";
+        const isIssued =
+          item.isIssued === true || validIssuedIds.has(invId) || (!validExpenseIds.has(invId) && validIssuedIds.has(invId));
 
-        if (validTxIds.has(txId) && validInvIds.has(invId) && !usedTxs.has(txId) && !usedInvs.has(invId)) {
+        const isValidTarget = isIssued ? validIssuedIds.has(invId) : validExpenseIds.has(invId);
+        const targetKey = `${isIssued ? "ISSUED" : "EXPENSE"}:${invId}`;
+
+        if (validTxIds.has(txId) && isValidTarget && !usedTxs.has(txId) && !usedInvs.has(targetKey)) {
           usedTxs.add(txId);
-          usedInvs.add(invId);
+          usedInvs.add(targetKey);
           aiMatches.push({
             transactionId: txId,
             invoiceId: invId,
+            isIssued,
             confidenceScore: confNum.toFixed(4),
             reason,
           });

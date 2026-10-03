@@ -524,6 +524,13 @@ export type Dict = {
     aiClassificationBadge: string;
     aiAcceptClassification: string;
     aiDismiss: string;
+    issuedInvoiceBadge: string;
+    clientPaymentBadge: string;
+    assignClientTitle: string;
+    assignClientDescription: string;
+    assignClientSearchPlaceholder: string;
+    tabIssuedInvoices: string;
+    tabExpenseInvoices: string;
   };
   taxes: {
     title: string;

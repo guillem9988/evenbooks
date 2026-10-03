@@ -99,6 +99,34 @@ describe("scorePair", () => {
     expect(scored.breakdown.vendor.invoiceNumberMatched).toBe(true);
     expect(scored.breakdown.vendor.points).toBe(10_000);
   });
+
+  it("matches client income transaction against an issued invoice and sets targetType to ISSUED", () => {
+    const incomeTx = transaction({
+      id: "tx-income",
+      amountCents: 60500n, // +605.00 EUR payment received from client
+      rawDescription: "TRANSF BANCARIA COBRAMENT FACTURA FAC-2026-004 CLIENT GENIAL SL",
+      transactionDate: day("2026-03-15"),
+    });
+    const clientInvoice = invoice({
+      id: "issued-inv-1",
+      vendorName: "Client Genial S.L.",
+      vendorTaxId: "B99887766",
+      invoiceNumber: "FAC-2026-004",
+      invoiceDate: day("2026-03-14"),
+      currency: "EUR",
+      baseAmountCents: 50000n,
+      totalAmountCents: 60500n,
+      targetType: "ISSUED",
+    });
+
+    const scored = scorePair(incomeTx, clientInvoice);
+    expect(scored.targetType).toBe("ISSUED");
+    expect(scored.issuedInvoiceId).toBe("issued-inv-1");
+    expect(scored.invoiceId).toBeNull();
+    expect(scored.breakdown.amount.exact).toBe(true);
+    expect(scored.breakdown.vendor.invoiceNumberMatched).toBe(true);
+    expect(scored.autoConfirm).toBe(true);
+  });
 });
 
 describe("assignMatches", () => {
