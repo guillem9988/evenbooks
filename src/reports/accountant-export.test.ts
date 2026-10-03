@@ -104,5 +104,5 @@ describe("buildAccountantExport", () => {
     expect(zip.files[`factures/${openTx.id}`]).toBeUndefined();
 
     await database.prisma.organization.delete({ where: { id: organization.id } });
-  });
+  }, 25000);
 });

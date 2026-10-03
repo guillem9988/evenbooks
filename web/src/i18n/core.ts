@@ -24,6 +24,7 @@ const API_KEYS: Record<string, keyof Dict["api"]> = {
   "Cannot rectify a credit note": "cannotRectifyCredit",
   "Contact not found": "contactNotFound",
   "Catalog item not found": "catalogNotFound",
+  "Cannot delete contact with existing invoices or quotes": "contactHasRelations",
 };
 
 type Params = Record<string, string | number>;

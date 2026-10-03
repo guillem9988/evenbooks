@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { PrismaClient } from "../../generated/prisma/client.js";
+import { IssuedInvoiceStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import { StatementFileError } from "../statements/parse-csv.js";
 import { parseStatementFile, statementExtension } from "../statements/parse-statement.js";
 
@@ -75,6 +75,68 @@ export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClie
       statementId: statement.id,
       totalTransactions: statement.totalTransactions,
     });
+  });
+
+  app.get("/organizations/:organizationId/statements", async (request, reply) => {
+    const { organizationId } = request.params as { organizationId: string };
+    if (!ORGANIZATION_ID.test(organizationId)) {
+      return reply.code(400).send({ error: "organizationId must be a UUID" });
+    }
+
+    const statements = await prisma.bankStatement.findMany({
+      where: { organizationId },
+      orderBy: { importedAt: "desc" },
+      select: {
+        id: true,
+        filename: true,
+        sourceBank: true,
+        importedAt: true,
+        totalTransactions: true,
+      },
+    });
+
+    return reply.send({ statements });
+  });
+
+  app.delete("/organizations/:organizationId/statements/:statementId", async (request, reply) => {
+    const { organizationId, statementId } = request.params as { organizationId: string; statementId: string };
+    if (!ORGANIZATION_ID.test(organizationId) || !ORGANIZATION_ID.test(statementId)) {
+      return reply.code(400).send({ error: "organizationId and statementId must be UUIDs" });
+    }
+
+    const statement = await prisma.bankStatement.findFirst({
+      where: { id: statementId, organizationId },
+      select: { id: true },
+    });
+    if (statement === null) {
+      return reply.code(404).send({ error: "Statement not found" });
+    }
+
+    // Reset any matched client issued invoices to UNPAID before cascade delete
+    const matchedIssued = await prisma.reconciliationMatch.findMany({
+      where: {
+        transaction: { statementId },
+        issuedInvoiceId: { not: null },
+      },
+      select: { issuedInvoiceId: true },
+    });
+
+    const issuedIds = matchedIssued
+      .map((m) => m.issuedInvoiceId)
+      .filter((id): id is string => typeof id === "string");
+
+    if (issuedIds.length > 0) {
+      await prisma.issuedInvoice.updateMany({
+        where: { id: { in: issuedIds } },
+        data: { status: IssuedInvoiceStatus.UNPAID },
+      });
+    }
+
+    await prisma.bankStatement.delete({
+      where: { id: statementId },
+    });
+
+    return reply.send({ ok: true, id: statementId });
   });
 }
 

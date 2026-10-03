@@ -64,4 +64,95 @@ export function registerContactRoutes(app: FastifyInstance, prisma: PrismaClient
       role: contact.role,
     });
   });
+
+  app.patch("/organizations/:organizationId/contacts/:contactId", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const contactId = readUuid((request.params as { contactId?: string }).contactId, "contactId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (contactId instanceof Error) {
+      return reply.code(400).send({ error: contactId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, organizationId },
+    });
+    if (contact === null) {
+      return reply.code(404).send({ error: "Contact not found" });
+    }
+
+    const body = request.body as { legalName?: unknown; taxId?: unknown; email?: unknown; role?: unknown };
+    const data: { legalName?: string; taxId?: string; email?: string; role?: ContactRole } = {};
+
+    if (typeof body?.legalName === "string" && body.legalName.trim() !== "") {
+      data.legalName = body.legalName.trim().slice(0, 255);
+    }
+    if (typeof body?.taxId === "string" && body.taxId.trim() !== "") {
+      data.taxId = body.taxId.trim().toUpperCase().slice(0, 50);
+    }
+    if (typeof body?.email === "string" && body.email.trim() !== "") {
+      data.email = body.email.trim().slice(0, 255);
+    }
+    if (body?.role === ContactRole.CLIENT || body?.role === ContactRole.SUPPLIER) {
+      data.role = body.role;
+    }
+
+    const updated = await prisma.contact.update({
+      where: { id: contact.id },
+      data,
+    });
+
+    return reply.send({
+      id: updated.id,
+      legalName: updated.legalName,
+      taxId: updated.taxId,
+      email: updated.email,
+      role: updated.role,
+    });
+  });
+
+  app.delete("/organizations/:organizationId/contacts/:contactId", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const contactId = readUuid((request.params as { contactId?: string }).contactId, "contactId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (contactId instanceof Error) {
+      return reply.code(400).send({ error: contactId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, organizationId },
+      include: {
+        _count: {
+          select: {
+            issuedInvoices: true,
+            quotes: true,
+            recurringInvoices: true,
+          },
+        },
+      },
+    });
+    if (contact === null) {
+      return reply.code(404).send({ error: "Contact not found" });
+    }
+
+    const count = contact._count.issuedInvoices + contact._count.quotes + contact._count.recurringInvoices;
+    if (count > 0) {
+      return reply.code(409).send({ error: "Cannot delete contact with existing invoices or quotes" });
+    }
+
+    await prisma.contact.delete({
+      where: { id: contact.id },
+    });
+
+    return reply.send({ ok: true, id: contact.id });
+  });
 }

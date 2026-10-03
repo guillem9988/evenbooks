@@ -242,7 +242,7 @@ function Overview({ data }: { data: OverviewData }) {
         <Button variant="outline" size="sm" render={<Link href="/despeses?nova=1" />}>
           <ReceiptIcon /> {t("home.newExpense")}
         </Button>
-        <Button variant="outline" size="sm" render={<Link href="/banc" />}>
+        <Button variant="outline" size="sm" render={<Link href="/banc?importa=1" />}>
           <LandmarkIcon /> {t("home.importBank")}
         </Button>
       </div>
@@ -307,7 +307,7 @@ function Overview({ data }: { data: OverviewData }) {
               <Button render={<Link href="/ingressos?nova=1" />}>
                 <PlusIcon /> {t("home.newInvoice")}
               </Button>
-              <Button variant="outline" render={<Link href="/banc" />}>
+              <Button variant="outline" render={<Link href="/banc?importa=1" />}>
                 <LandmarkIcon /> {t("home.importBank")}
               </Button>
             </div>

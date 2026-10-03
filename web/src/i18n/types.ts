@@ -121,6 +121,7 @@ export type Dict = {
     cannotRectifyCredit: string;
     contactNotFound: string;
     catalogNotFound: string;
+    contactHasRelations: string;
   };
   auth: {
     points: readonly [string, string, string, string];
@@ -546,6 +547,13 @@ export type Dict = {
     assignClientSearchPlaceholder: string;
     tabIssuedInvoices: string;
     tabExpenseInvoices: string;
+    statements: string;
+    statementsDescription: string;
+    deleteStatement: string;
+    deleteStatementConfirm: string;
+    deleteStatementSuccess: string;
+    deleteStatementFailed: string;
+    noStatements: string;
   };
   taxes: {
     title: string;
@@ -591,6 +599,19 @@ export type Dict = {
     dialogSubmit: string;
     client: string;
     supplier: string;
+    edit: string;
+    editTitle: string;
+    editDescription: string;
+    editSubmit: string;
+    updated: string;
+    editFailed: string;
+    delete: string;
+    deleteTitle: string;
+    deleteConfirm: string;
+    deleteSuccess: string;
+    deleteFailed: string;
+    deleteHasRelations: string;
+    actions: string;
   };
   badges: {
     paid: string;

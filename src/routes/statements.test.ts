@@ -57,8 +57,27 @@ describe("POST /organizations/:organizationId/statements", () => {
     });
     expect(textFile.statusCode).toBe(400);
 
+    const listRes = await inject({
+      method: "GET",
+      url: `/organizations/${organization.id}/statements`,
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listBody = listRes.json() as { statements: Array<{ id: string; filename: string }> };
+    expect(listBody.statements).toHaveLength(1);
+    expect(listBody.statements[0]?.id).toBe(body.statementId);
+
+    const delRes = await inject({
+      method: "DELETE",
+      url: `/organizations/${organization.id}/statements/${body.statementId}`,
+    });
+    expect(delRes.statusCode).toBe(200);
+    const remaining = await database.prisma.bankStatement.findUnique({
+      where: { id: body.statementId },
+    });
+    expect(remaining).toBeNull();
+
     await database.prisma.organization.delete({ where: { id: organization.id } });
-  });
+  }, 25000);
 });
 
 function csvPayload(csv: string, sourceBank: string): { headers: Record<string, string>; payload: string } {

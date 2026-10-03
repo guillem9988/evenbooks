@@ -12,6 +12,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   SparklesIcon,
+  Trash2Icon,
   Undo2Icon,
   UploadIcon,
   XIcon,
@@ -143,12 +144,20 @@ export function ReviewDesk() {
   const [to, setTo] = useState(initialRange.to);
   const [busy, setBusy] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [managingStatements, setManagingStatements] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [rejecting, setRejecting] = useState<AutoMatch | null>(null);
   const [tab, setTab] = useState<Tab>("suggestions");
   const [assigningTx, setAssigningTx] = useState<BankLine | null>(null);
   const [aiResults, setAiResults] = useState<AiAnalyzePayload | null>(null);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("importa") === "1") {
+      setImporting(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   const load = useCallback(async (): Promise<ReviewPayload> => {
     const body = await api<ReviewPayload>(`/organizations/${organizationId}/reconciliation/review`);
@@ -414,6 +423,9 @@ export function ReviewDesk() {
         description={t("bank.description")}
         actions={
           <>
+            <Button variant="outline" onClick={() => setManagingStatements(true)}>
+              <LandmarkIcon /> {t("bank.statements")}
+            </Button>
             <Button variant="outline" onClick={() => setImporting(true)}>
               <FileSpreadsheetIcon /> {t("bank.importStatement")}
             </Button>
@@ -807,7 +819,116 @@ export function ReviewDesk() {
           }}
         />
       )}
+
+      <StatementsDialog
+        open={managingStatements}
+        onOpenChange={setManagingStatements}
+        organizationId={organizationId}
+        onDeleted={async () => {
+          await reload();
+        }}
+      />
     </>
+  );
+}
+
+interface BankStatementItem {
+  id: string;
+  filename: string;
+  sourceBank: string | null;
+  importedAt: string;
+  totalTransactions: number;
+}
+
+function StatementsDialog({
+  open,
+  onOpenChange,
+  organizationId,
+  onDeleted,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  organizationId: string;
+  onDeleted: () => void;
+}) {
+  const t = useT();
+  const [statements, setStatements] = useState<BankStatementItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const loadStatements = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api<{ statements: BankStatementItem[] }>(`/organizations/${organizationId}/statements`);
+      setStatements(res.statements ?? []);
+    } catch (e) {
+      notifyError(e, t("bank.loadFailed"));
+    } finally {
+      setLoading(false);
+    }
+  }, [organizationId, t]);
+
+  useEffect(() => {
+    if (open) {
+      void loadStatements();
+    }
+  }, [open, loadStatements]);
+
+  async function handleDelete(stmt: BankStatementItem) {
+    if (!confirm(t("bank.deleteStatementConfirm"))) return;
+    setDeletingId(stmt.id);
+    try {
+      await api(`/organizations/${organizationId}/statements/${stmt.id}`, { method: "DELETE" });
+      notifySuccess(t("bank.deleteStatementSuccess"));
+      setStatements((prev) => prev.filter((s) => s.id !== stmt.id));
+      onDeleted();
+    } catch (e) {
+      notifyError(e, t("bank.deleteStatementFailed"));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("bank.statements")}</DialogTitle>
+          <DialogDescription>{t("bank.statementsDescription")}</DialogDescription>
+        </DialogHeader>
+        <div className="py-2">
+          {loading ? (
+            <LoadingRows rows={2} />
+          ) : statements.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">{t("bank.noStatements")}</p>
+          ) : (
+            <ul className="flex flex-col divide-y border rounded-lg overflow-hidden">
+              {statements.map((s) => (
+                <li key={s.id} className="flex items-center justify-between p-3 gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">{s.filename}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(s.importedAt)} · {s.totalTransactions} {t("bank.statsTotal").toLowerCase()}
+                      {s.sourceBank ? ` · ${s.sourceBank}` : ""}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive shrink-0"
+                    disabled={deletingId === s.id}
+                    onClick={() => void handleDelete(s)}
+                    title={t("bank.deleteStatement")}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

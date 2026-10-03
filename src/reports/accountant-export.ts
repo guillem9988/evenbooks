@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 import { formatCents } from "../lib/money.js";
+import { renderIssuedInvoicePdf } from "../billing/invoice-pdf.js";
 
 export interface ExportObjectStore {
   get(key: string): Promise<Buffer>;
@@ -35,12 +36,24 @@ export async function buildAccountantExport(
   from: string,
   to: string,
 ): Promise<AccountantExport> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { legalName: true, taxId: true },
+  });
+
   const transactions = await prisma.bankTransaction.findMany({
     where: {
       organizationId,
       transactionDate: { gte: utcDate(from), lte: utcDate(to) },
     },
-    include: { reconciliation: { include: { invoice: true } } },
+    include: {
+      reconciliation: {
+        include: {
+          invoice: true,
+          issuedInvoice: { include: { contact: true, lines: true } },
+        },
+      },
+    },
     orderBy: [{ transactionDate: "asc" }, { id: "asc" }],
   });
 
@@ -51,6 +64,20 @@ export async function buildAccountantExport(
 
   for (const transaction of transactions) {
     const invoice = transaction.reconciliation?.invoice ?? null;
+    const issued = transaction.reconciliation?.issuedInvoice ?? null;
+
+    const vendorName = invoice?.vendorName ?? issued?.contact?.legalName ?? "";
+    const invoiceNumber = invoice?.invoiceNumber ?? issued?.seriesNumber ?? "";
+    const invoiceDate = invoice?.invoiceDate
+      ? isoDate(invoice.invoiceDate)
+      : issued?.invoiceDate
+        ? isoDate(issued.invoiceDate)
+        : "";
+    const baseAmountCents = invoice?.baseAmountCents?.toString() ?? issued?.baseAmountCents?.toString() ?? "";
+    const taxAmountCents = invoice?.taxAmountCents?.toString() ?? issued?.taxAmountCents?.toString() ?? "";
+    const totalAmountCents = invoice?.totalAmountCents?.toString() ?? issued?.totalAmountCents?.toString() ?? "";
+    const taxRate = invoice?.taxRate ?? (issued?.lines[0]?.taxRate ?? "");
+
     csvRows.push(
       [
         isoDate(transaction.transactionDate),
@@ -59,34 +86,55 @@ export async function buildAccountantExport(
         transaction.currency,
         transaction.rawDescription,
         transaction.matchStatus,
-        invoice?.vendorName ?? "",
-        invoice?.invoiceNumber ?? "",
-        invoice?.invoiceDate ? isoDate(invoice.invoiceDate) : "",
-        invoice?.baseAmountCents?.toString() ?? "",
-        invoice?.taxAmountCents?.toString() ?? "",
-        invoice?.totalAmountCents?.toString() ?? "",
-        invoice?.taxRate ?? "",
+        vendorName,
+        invoiceNumber,
+        invoiceDate,
+        baseAmountCents,
+        taxAmountCents,
+        totalAmountCents,
+        taxRate,
         transaction.reconciliation ? transaction.reconciliation.confidenceScore.toFixed(4) : "",
       ]
         .map(csvCell)
         .join(","),
     );
 
-    if (transaction.amountCents < 0n && transaction.reconciliation === null) {
+    if (transaction.reconciliation === null) {
+      const prefix = transaction.amountCents < 0n ? "" : "+";
       anomalyLines.push(
-        `${isoDate(transaction.transactionDate)} ${formatCents(transaction.amountCents)} ${transaction.currency} ${transaction.rawDescription}`,
+        `${isoDate(transaction.transactionDate)} ${prefix}${formatCents(transaction.amountCents)} ${transaction.currency} ${transaction.rawDescription}`,
       );
     }
 
-    if (invoice === null) {
-      continue;
+    if (invoice && invoice.storageKey) {
+      const filename = invoiceFilename(invoice, transaction.transactionDate);
+      try {
+        const bytes = await store.get(invoice.storageKey);
+        zip.file(`factures/${filename}`, bytes);
+      } catch {
+        missingFiles.push(`${filename} missing from bucket (${invoice.storageKey})`);
+      }
     }
-    const filename = invoiceFilename(invoice, transaction.transactionDate);
-    try {
-      const bytes = await store.get(invoice.storageKey);
-      zip.file(`factures/${filename}`, bytes);
-    } catch {
-      missingFiles.push(`${filename} missing from bucket (${invoice.storageKey})`);
+
+    if (issued && organization) {
+      try {
+        const pdfBytes = await renderIssuedInvoicePdf({
+          legalName: organization.legalName,
+          taxId: organization.taxId,
+          contactName: issued.contact.legalName,
+          contactTaxId: issued.contact.taxId,
+          seriesNumber: issued.seriesNumber,
+          invoiceDate: isoDate(issued.invoiceDate),
+          baseAmountCents: issued.baseAmountCents,
+          taxAmountCents: issued.taxAmountCents,
+          totalAmountCents: issued.totalAmountCents,
+          lines: issued.lines,
+        });
+        const filename = `${sanitizeVendor(issued.seriesNumber)}.pdf`;
+        zip.file(`factures_emeses/${filename}`, Buffer.from(pdfBytes));
+      } catch {
+        // Continue if PDF render fails
+      }
     }
   }
 
