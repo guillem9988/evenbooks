@@ -122,6 +122,9 @@ export type Dict = {
     contactNotFound: string;
     catalogNotFound: string;
     contactHasRelations: string;
+    cannotDeleteRectifiedInvoice: string;
+    cannotEditConvertedQuote: string;
+    cannotDeleteConvertedQuote: string;
   };
   auth: {
     points: readonly [string, string, string, string];
@@ -269,6 +272,12 @@ export type Dict = {
     dateTo: string;
     clearFilters: string;
     showingCount: string;
+    deleteInvoice: string;
+    deleteTitle: string;
+    deleteConfirm: string;
+    deleteSuccess: string;
+    deleteFailed: string;
+    deleteHasCreditNote: string;
   };
   quotes: {
     title: string;
@@ -300,6 +309,10 @@ export type Dict = {
     invoiceNumber: string;
     invoiceNumberHint: string;
     downloadPdf: string;
+    editQuote: string;
+    editTitle: string;
+    updated: string;
+    editFailed: string;
     deleteQuote: string;
     deleteConfirm: string;
     deleteSuccess: string;
@@ -342,6 +355,15 @@ export type Dict = {
     runTitle: string;
     runDescription: string;
     runSubmit: string;
+    deleteSeries: string;
+    deleteTitle: string;
+    deleteConfirm: string;
+    deleteSuccess: string;
+    deleteFailed: string;
+    editSeries: string;
+    editTitle: string;
+    updated: string;
+    editFailed: string;
   };
   catalog: {
     title: string;

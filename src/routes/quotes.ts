@@ -210,6 +210,111 @@ export function registerQuoteRoutes(app: FastifyInstance, prisma: PrismaClient):
       .send(Buffer.from(pdf));
   });
 
+  app.patch("/organizations/:organizationId/quotes/:quoteId", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const quoteId = readUuid((request.params as { quoteId?: string }).quoteId, "quoteId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (quoteId instanceof Error) {
+      return reply.code(400).send({ error: quoteId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const quote = await prisma.quote.findFirst({
+      where: { id: quoteId, organizationId },
+      include: { lines: true },
+    });
+    if (quote === null) {
+      return reply.code(404).send({ error: "Quote not found" });
+    }
+    if (quote.status === QuoteStatus.CONVERTED || quote.issuedInvoiceId !== null) {
+      return reply.code(409).send({ error: "Cannot edit a converted quote" });
+    }
+
+    const body = request.body as {
+      contactId?: unknown;
+      quoteDate?: unknown;
+      seriesNumber?: unknown;
+      lines?: unknown;
+    };
+
+    let newContactId: string | undefined = undefined;
+    if (body?.contactId !== undefined) {
+      if (typeof body.contactId !== "string") return reply.code(400).send({ error: "contactId must be a UUID" });
+      const cid = readUuid(body.contactId, "contactId");
+      if (cid instanceof Error) return reply.code(400).send({ error: cid.message });
+      const contact = await prisma.contact.findFirst({ where: { id: cid, organizationId } });
+      if (contact === null) return reply.code(404).send({ error: "Contact not found" });
+      newContactId = cid;
+    }
+
+    let newQuoteDate: Date | undefined = undefined;
+    if (body?.quoteDate !== undefined) {
+      const d = parseDay(body.quoteDate);
+      if (d === null) return reply.code(400).send({ error: "quoteDate must be YYYY-MM-DD" });
+      newQuoteDate = d;
+    }
+
+    let newSeries: string | undefined = undefined;
+    if (body?.seriesNumber !== undefined) {
+      if (typeof body.seriesNumber !== "string" || body.seriesNumber.trim() === "") {
+        return reply.code(400).send({ error: "seriesNumber is required" });
+      }
+      newSeries = body.seriesNumber.trim().slice(0, 100);
+    }
+
+    let document = undefined;
+    if (body?.lines !== undefined) {
+      const doc = readLines(body.lines);
+      if (doc instanceof Error) return reply.code(400).send({ error: doc.message });
+      document = doc;
+    }
+
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        if (document !== undefined) {
+          await tx.quoteLine.deleteMany({ where: { quoteId: quote.id } });
+          await tx.quoteLine.createMany({
+            data: document.lines.map((line) => ({
+              quoteId: quote.id,
+              description: line.description,
+              quantity: line.quantity,
+              unitAmountCents: line.unitAmountCents,
+              taxRate: line.taxRateType,
+              baseAmountCents: line.baseAmountCents,
+              taxAmountCents: line.taxAmountCents,
+              totalAmountCents: line.totalAmountCents,
+            })),
+          });
+        }
+        return tx.quote.update({
+          where: { id: quote.id },
+          data: {
+            ...(newContactId !== undefined ? { contactId: newContactId } : {}),
+            ...(newQuoteDate !== undefined ? { quoteDate: newQuoteDate } : {}),
+            ...(newSeries !== undefined ? { seriesNumber: newSeries } : {}),
+            ...(document !== undefined
+              ? {
+                  baseAmountCents: document.baseAmountCents,
+                  taxAmountCents: document.taxAmountCents,
+                  totalAmountCents: document.totalAmountCents,
+                }
+              : {}),
+          },
+          include: { contact: true, lines: true },
+        });
+      }, { timeout: 15000 });
+      return reply.send(presentQuote(updated));
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return reply.code(409).send({ error: "Series number already exists" });
+      }
+      throw error;
+    }
+  });
+
   app.delete("/organizations/:organizationId/quotes/:quoteId", async (request, reply) => {
     const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
     const quoteId = readUuid((request.params as { quoteId?: string }).quoteId, "quoteId");

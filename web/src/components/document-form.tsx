@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { FormDialog, Field, NativeSelect, notifyError, today } from "@/components/ui-kit";
 import { LineEditor, emptyLine, validateLines, type CatalogPick, type DraftLine, type LineErrors, type ParsedLine } from "@/components/line-editor";
 import { useT } from "@/i18n";
 
-export type { CatalogPick } from "@/components/line-editor";
+export type { CatalogPick, DraftLine } from "@/components/line-editor";
 
 export interface Contact {
   id: string;
@@ -21,6 +21,13 @@ export interface DocumentPayload {
   date: string;
   seriesNumber: string;
   lines: ParsedLine[];
+}
+
+export interface DocumentInitialData {
+  contactId: string;
+  date: string;
+  seriesNumber: string;
+  lines: DraftLine[];
 }
 
 interface HeaderErrors {
@@ -38,6 +45,7 @@ export function DocumentDialog({
   contacts,
   catalog = [],
   suggestedSeries = "",
+  initialData = null,
   onSubmit,
 }: {
   open: boolean;
@@ -48,6 +56,7 @@ export function DocumentDialog({
   contacts: Contact[];
   catalog?: CatalogPick[];
   suggestedSeries?: string;
+  initialData?: DocumentInitialData | null;
   onSubmit: (payload: DocumentPayload) => Promise<void>;
 }) {
   const t = useT();
@@ -58,6 +67,24 @@ export function DocumentDialog({
   const [lineErrors, setLineErrors] = useState<LineErrors>([]);
   const [errors, setErrors] = useState<HeaderErrors>({});
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      if (initialData) {
+        setContactId(initialData.contactId);
+        setDate(initialData.date);
+        setSeriesNumber(initialData.seriesNumber);
+        setLines(initialData.lines.length > 0 ? initialData.lines : [emptyLine()]);
+      } else {
+        setContactId("");
+        setDate(today());
+        setSeriesNumber(suggestedSeries);
+        setLines([emptyLine()]);
+      }
+      setLineErrors([]);
+      setErrors({});
+    }
+  }, [open, initialData, suggestedSeries]);
 
   function reset() {
     setContactId("");

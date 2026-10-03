@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRightLeftIcon, FileDownIcon, MoreHorizontalIcon, PlusIcon, Trash2Icon, UsersIcon } from "lucide-react";
+import { ArrowRightLeftIcon, FileDownIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, Trash2Icon, UsersIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +12,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DocumentDialog, nextSeries, type CatalogPick, type Contact, type DocumentPayload } from "@/components/document-form";
+import {
+  DocumentDialog,
+  nextSeries,
+  type CatalogPick,
+  type Contact,
+  type DocumentInitialData,
+  type DocumentPayload,
+} from "@/components/document-form";
 import { useOrganizationId } from "@/components/shell";
 import { QuoteBadge } from "@/components/status-badges";
 import {
@@ -30,15 +37,25 @@ import {
 } from "@/components/ui-kit";
 import { useT } from "@/i18n";
 import { api, apiPath } from "@/lib/api";
-import { euros } from "@/lib/money";
+import { euroInput, euros } from "@/lib/money";
+
+interface QuoteLine {
+  description: string;
+  quantity: number;
+  unitAmountCents: string;
+  taxRate: string;
+  totalAmountCents: string;
+}
 
 interface Quote {
   id: string;
   seriesNumber: string;
   quoteDate: string;
   status: "OPEN" | "CONVERTED";
+  contactId: string;
   contactName: string;
   totalAmountCents: string;
+  lines?: QuoteLine[];
 }
 
 interface QuotesData {
@@ -50,10 +67,33 @@ interface QuotesData {
 
 type Filter = "ALL" | "OPEN" | "CONVERTED";
 
+function quoteToInitialData(quote: Quote): DocumentInitialData {
+  return {
+    contactId: quote.contactId,
+    date: quote.quoteDate,
+    seriesNumber: quote.seriesNumber,
+    lines: (quote.lines ?? []).map((line) => {
+      let rateNum = 21;
+      if (line.taxRate === "REDUCED_10") rateNum = 10;
+      else if (line.taxRate === "SUPER_REDUCED_4") rateNum = 4;
+      else if (line.taxRate === "EXEMPT_0") rateNum = 0;
+      else if (typeof line.taxRate === "number") rateNum = line.taxRate;
+      return {
+        description: line.description,
+        quantity: String(line.quantity),
+        price: euroInput(line.unitAmountCents),
+        taxRate: String(rateNum),
+      };
+    }),
+  };
+}
+
 export default function QuotesPage() {
   const t = useT();
   const organizationId = useOrganizationId();
   const [creating, setCreating] = useState(false);
+  const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+  const [deletingQuote, setDeletingQuote] = useState<Quote | null>(null);
   const [converting, setConverting] = useState<Quote | null>(null);
   const [series, setSeries] = useState("");
   const [seriesError, setSeriesError] = useState<string | null>(null);
@@ -97,6 +137,17 @@ export default function QuotesPage() {
     await reload();
   }
 
+  async function update(payload: DocumentPayload) {
+    if (!editingQuote) return;
+    await api(`/organizations/${organizationId}/quotes/${editingQuote.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ contactId: payload.contactId, quoteDate: payload.date, seriesNumber: payload.seriesNumber, lines: payload.lines }),
+    });
+    notifySuccess(t("quotes.updated", { series: payload.seriesNumber }));
+    setEditingQuote(null);
+    await reload();
+  }
+
   function startConvert(quote: Quote) {
     setConverting(quote);
     setSeries(nextSeries(data?.invoiceSeries ?? []));
@@ -125,14 +176,18 @@ export default function QuotesPage() {
     }
   }
 
-  async function deleteQuote(quote: Quote) {
-    if (!confirm(t("quotes.deleteConfirm"))) return;
+  async function remove() {
+    if (!deletingQuote) return;
+    setBusy(true);
     try {
-      await api(`/organizations/${organizationId}/quotes/${quote.id}`, { method: "DELETE" });
+      await api(`/organizations/${organizationId}/quotes/${deletingQuote.id}`, { method: "DELETE" });
       notifySuccess(t("quotes.deleteSuccess"));
+      setDeletingQuote(null);
       await reload();
     } catch (cause) {
       notifyError(cause, t("quotes.deleteFailed"));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -154,12 +209,17 @@ export default function QuotesPage() {
             <FileDownIcon /> {t("quotes.downloadPdf")}
           </DropdownMenuItem>
           {quote.status === "OPEN" ? (
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => void deleteQuote(quote)}
-            >
-              <Trash2Icon /> {t("quotes.deleteQuote")}
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem onClick={() => setEditingQuote(quote)}>
+                <PencilIcon /> {t("quotes.editQuote")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setDeletingQuote(quote)}
+              >
+                <Trash2Icon /> {t("quotes.deleteQuote")}
+              </DropdownMenuItem>
+            </>
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -200,7 +260,7 @@ export default function QuotesPage() {
             }
           />
         ) : (
-          <section className="flex flex-col gap-3" aria-label={t("quotes.listLabel")}>
+          <section aria-label={t("quotes.listLabel")} className="flex flex-col gap-3">
             <Segmented
               label={t("quotes.filter")}
               value={filter}
@@ -233,7 +293,7 @@ export default function QuotesPage() {
                       {visible.map((quote) => (
                         <TableRow key={quote.id}>
                           <TableCell className="font-medium">{quote.seriesNumber}</TableCell>
-                          <TableCell className="max-w-56 truncate">{quote.contactName}</TableCell>
+                          <TableCell className="max-w-48 truncate">{quote.contactName}</TableCell>
                           <TableCell>{formatDate(quote.quoteDate)}</TableCell>
                           <TableCell className="text-right font-medium tabular-nums">{euros(quote.totalAmountCents)}</TableCell>
                           <TableCell>
@@ -282,6 +342,18 @@ export default function QuotesPage() {
         onSubmit={create}
       />
 
+      <DocumentDialog
+        open={editingQuote !== null}
+        onOpenChange={(next) => !next && setEditingQuote(null)}
+        title={t("quotes.editTitle", { series: editingQuote?.seriesNumber ?? "" })}
+        description={t("quotes.dialogDescription")}
+        submitLabel={t("quotes.dialogSubmit")}
+        contacts={contacts}
+        catalog={data?.catalog ?? []}
+        initialData={editingQuote ? quoteToInitialData(editingQuote) : null}
+        onSubmit={update}
+      />
+
       <FormDialog
         open={converting !== null}
         onOpenChange={(next) => !next && setConverting(null)}
@@ -298,6 +370,19 @@ export default function QuotesPage() {
         <Field id="convert-series" label={t("quotes.invoiceNumber")} error={seriesError} hint={t("quotes.invoiceNumberHint")}>
           <Input id="convert-series" value={series} onChange={(event) => setSeries(event.target.value)} autoFocus />
         </Field>
+      </FormDialog>
+
+      <FormDialog
+        open={deletingQuote !== null}
+        onOpenChange={(next) => !next && setDeletingQuote(null)}
+        title={t("quotes.deleteQuote")}
+        description={deletingQuote ? `${deletingQuote.seriesNumber} · ${deletingQuote.contactName} (${euros(deletingQuote.totalAmountCents)})` : undefined}
+        submitLabel={t("quotes.deleteQuote")}
+        destructive
+        busy={busy}
+        onSubmit={remove}
+      >
+        <p className="text-sm text-muted-foreground">{t("quotes.deleteConfirm")}</p>
       </FormDialog>
     </>
   );

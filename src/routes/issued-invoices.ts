@@ -301,6 +301,59 @@ export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: Prisma
       throw error;
     }
   });
+
+  app.delete("/organizations/:organizationId/issued-invoices/:invoiceId", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    const invoiceId = readUuid((request.params as { invoiceId?: string }).invoiceId, "invoiceId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if (invoiceId instanceof Error) {
+      return reply.code(400).send({ error: invoiceId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const invoice = await prisma.issuedInvoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: {
+        creditNote: { select: { id: true, seriesNumber: true } },
+        reconciliation: { select: { id: true, transactionId: true } },
+        quote: { select: { id: true } },
+      },
+    });
+    if (invoice === null) {
+      return reply.code(404).send({ error: "Issued invoice not found" });
+    }
+    if (invoice.creditNote !== null) {
+      return reply.code(409).send({ error: "Cannot delete an invoice that has been rectified" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (invoice.reconciliation) {
+        await tx.bankTransaction.update({
+          where: { id: invoice.reconciliation.transactionId },
+          data: { matchStatus: "UNMATCHED" },
+        });
+        await tx.reconciliationMatch.delete({
+          where: { id: invoice.reconciliation.id },
+        });
+      }
+
+      if (invoice.quote) {
+        await tx.quote.update({
+          where: { id: invoice.quote.id },
+          data: { status: "OPEN", issuedInvoiceId: null },
+        });
+      }
+
+      await tx.issuedInvoice.delete({
+        where: { id: invoice.id },
+      });
+    }, { timeout: 15000 });
+
+    return reply.send({ ok: true, id: invoice.id });
+  });
 }
 
 export async function buildIssued(

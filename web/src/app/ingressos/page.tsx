@@ -10,6 +10,7 @@ import {
   MoreHorizontalIcon,
   PlusIcon,
   SearchIcon,
+  Trash2Icon,
   UndoIcon,
   UsersIcon,
   XIcon,
@@ -72,6 +73,7 @@ export default function IncomePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [deletingInvoice, setDeletingInvoice] = useState<IssuedInvoice | null>(null);
 
   const [emailingInvoice, setEmailingInvoice] = useState<IssuedInvoice | null>(null);
   const [emailRecipient, setEmailRecipient] = useState("");
@@ -201,15 +203,34 @@ export default function IncomePage() {
     }
   }
 
+  async function deleteInvoice() {
+    if (!deletingInvoice) return;
+    setPending(deletingInvoice.id);
+    try {
+      await api(`/organizations/${organizationId}/issued-invoices/${deletingInvoice.id}`, {
+        method: "DELETE",
+      });
+      notifySuccess(t("income.deleteSuccess"));
+      setDeletingInvoice(null);
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("income.deleteFailed"));
+    } finally {
+      setPending(null);
+    }
+  }
+
   const actions = (invoice: IssuedInvoice) => (
     <InvoiceActions
       invoice={invoice}
       organizationId={organizationId}
       pending={pending === invoice.id}
       canRectify={invoice.rectifiesSeriesNumber === null && !rectifiedSeries.has(invoice.seriesNumber)}
+      canDelete={!rectifiedSeries.has(invoice.seriesNumber)}
       onPaid={() => togglePaid(invoice)}
       onRectify={() => setRectifying(invoice)}
       onEmail={() => startEmailInvoice(invoice)}
+      onDelete={() => setDeletingInvoice(invoice)}
     />
   );
 
@@ -496,6 +517,19 @@ export default function IncomePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <FormDialog
+        open={deletingInvoice !== null}
+        onOpenChange={(open) => !open && setDeletingInvoice(null)}
+        title={t("income.deleteTitle")}
+        description={deletingInvoice ? `${deletingInvoice.seriesNumber} · ${deletingInvoice.contactName} (${euros(deletingInvoice.totalAmountCents)})` : undefined}
+        submitLabel={t("income.deleteInvoice")}
+        destructive
+        busy={pending === deletingInvoice?.id}
+        onSubmit={deleteInvoice}
+      >
+        <p className="text-sm text-muted-foreground">{t("income.deleteConfirm")}</p>
+      </FormDialog>
     </>
   );
 }
@@ -505,17 +539,21 @@ function InvoiceActions({
   organizationId,
   pending,
   canRectify,
+  canDelete,
   onPaid,
   onRectify,
   onEmail,
+  onDelete,
 }: {
   invoice: IssuedInvoice;
   organizationId: string;
   pending: boolean;
   canRectify: boolean;
+  canDelete: boolean;
   onPaid: () => void;
   onRectify: () => void;
   onEmail: () => void;
+  onDelete: () => void;
 }) {
   const t = useT();
   return (
@@ -547,6 +585,11 @@ function InvoiceActions({
           {canRectify ? (
             <DropdownMenuItem onClick={onRectify}>
               <FilePenLineIcon /> {t("income.createRectificativa")}
+            </DropdownMenuItem>
+          ) : null}
+          {canDelete ? (
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
+              <Trash2Icon /> {t("income.deleteInvoice")}
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuContent>

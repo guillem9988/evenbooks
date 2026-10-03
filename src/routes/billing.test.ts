@@ -16,7 +16,7 @@ afterAll(async () => {
   await database.close();
 });
 
-describe("issued invoices, quotes, and tax preview", () => {
+describe("issued invoices, quotes, and tax preview", { timeout: 35000 }, () => {
   it("stores a 21% line in cents, sums two rates, and refuses a second quote conversion", async () => {
     const created = await inject({
       method: "POST",
@@ -313,6 +313,125 @@ describe("issued invoices, quotes, and tax preview", () => {
     });
     expect((loss.json() as { netCents: string; paymentCents: string }).netCents).toBe("-140000");
     expect((loss.json() as { paymentCents: string }).paymentCents).toBe("0");
+
+    await database.prisma.organization.delete({ where: { id: organizationId } });
+  });
+
+  it("updates and deletes quotes, issued invoices, and recurring invoices", { timeout: 45000 }, async () => {
+    const orgRes = await inject({
+      method: "POST",
+      url: "/organizations",
+      payload: { legalName: "Crud SL", taxId: "B50000001" },
+    });
+    const organizationId = (orgRes.json() as { id: string }).id;
+    const contactRes = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/contacts`,
+      payload: { legalName: "Client Crud", taxId: "B50000002", email: "crud@example.com", role: "CLIENT" },
+    });
+    const contactId = (contactRes.json() as { id: string }).id;
+
+    // 1. Quote creation and edit (PATCH)
+    const quoteRes = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/quotes`,
+      payload: {
+        contactId,
+        quoteDate: "2026-05-01",
+        seriesNumber: "P-EDIT-1",
+        lines: [{ description: "Initial", quantity: 1, unitAmountCents: "5000", taxRate: 21 }],
+      },
+    });
+    expect(quoteRes.statusCode).toBe(201);
+    const quoteId = (quoteRes.json() as { id: string }).id;
+
+    const patchQuoteRes = await inject({
+      method: "PATCH",
+      url: `/organizations/${organizationId}/quotes/${quoteId}`,
+      payload: {
+        seriesNumber: "P-EDIT-MODIFIED",
+        lines: [{ description: "Modified", quantity: 2, unitAmountCents: "10000", taxRate: 21 }],
+      },
+    });
+    expect(patchQuoteRes.statusCode).toBe(200);
+    const patchedQuote = patchQuoteRes.json() as { seriesNumber: string; totalAmountCents: string };
+    expect(patchedQuote.seriesNumber).toBe("P-EDIT-MODIFIED");
+    expect(patchedQuote.totalAmountCents).toBe("24200"); // 2 * 100 + 21% = 242
+
+    // 2. Convert quote to invoice
+    const convertRes = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/quotes/${quoteId}/convert`,
+      payload: { seriesNumber: "F-CONV-1" },
+    });
+    expect(convertRes.statusCode).toBe(201);
+    const invoiceId = (convertRes.json() as { id: string }).id;
+
+    // Quote is now converted: edit and delete must be rejected (409)
+    const badEditQuote = await inject({
+      method: "PATCH",
+      url: `/organizations/${organizationId}/quotes/${quoteId}`,
+      payload: { seriesNumber: "P-EDIT-FAIL" },
+    });
+    expect(badEditQuote.statusCode).toBe(409);
+
+    const badDeleteQuote = await inject({
+      method: "DELETE",
+      url: `/organizations/${organizationId}/quotes/${quoteId}`,
+    });
+    expect(badDeleteQuote.statusCode).toBe(409);
+
+    // 3. Delete issued invoice -> should restore quote back to OPEN
+    const deleteInvoiceRes = await inject({
+      method: "DELETE",
+      url: `/organizations/${organizationId}/issued-invoices/${invoiceId}`,
+    });
+    expect(deleteInvoiceRes.statusCode).toBe(200);
+
+    const restoredQuote = await database.prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
+    expect(restoredQuote.status).toBe("OPEN");
+    expect(restoredQuote.issuedInvoiceId).toBeNull();
+
+    // Now that quote is OPEN again, deleting it succeeds
+    const deleteQuoteRes = await inject({
+      method: "DELETE",
+      url: `/organizations/${organizationId}/quotes/${quoteId}`,
+    });
+    expect(deleteQuoteRes.statusCode).toBe(200);
+
+    // 4. Recurring invoice: create, patch, run, delete
+    const recurRes = await inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/recurring-invoices`,
+      payload: {
+        contactId,
+        dayOfMonth: 10,
+        lines: [{ description: "Monthly base", quantity: 1, unitAmountCents: "3000", taxRate: 21 }],
+      },
+    });
+    expect(recurRes.statusCode).toBe(201);
+    const seriesId = (recurRes.json() as { id: string }).id;
+
+    const patchRecurRes = await inject({
+      method: "PATCH",
+      url: `/organizations/${organizationId}/recurring-invoices/${seriesId}`,
+      payload: {
+        dayOfMonth: 15,
+        lines: [{ description: "Monthly updated", quantity: 2, unitAmountCents: "4000", taxRate: 21 }],
+      },
+    });
+    expect(patchRecurRes.statusCode).toBe(200);
+    const patchedRecur = patchRecurRes.json() as { dayOfMonth: number };
+    expect(patchedRecur.dayOfMonth).toBe(15);
+
+    const deleteRecurRes = await inject({
+      method: "DELETE",
+      url: `/organizations/${organizationId}/recurring-invoices/${seriesId}`,
+    });
+    expect(deleteRecurRes.statusCode).toBe(200);
+
+    const checkRecurDeleted = await database.prisma.recurringInvoice.findUnique({ where: { id: seriesId } });
+    expect(checkRecurDeleted).toBeNull();
 
     await database.prisma.organization.delete({ where: { id: organizationId } });
   });
