@@ -1,8 +1,9 @@
 "use client";
 
-import { CheckCircle2Icon } from "lucide-react";
+import { BellRingIcon, CheckCircle2Icon } from "lucide-react";
+import { ButtonLink } from "@/components/ui/button-link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate, sumCents } from "@/components/ui-kit";
+import { daysSince, formatDate, sumCents } from "@/components/ui-kit";
 import { useT } from "@/i18n";
 import { euros } from "@/lib/money";
 
@@ -21,11 +22,6 @@ const BUCKETS = [
   { key: "aging60", min: 61, max: 90, color: "oklch(0.6 0.16 38)" },
   { key: "aging90", min: 91, max: Number.POSITIVE_INFINITY, color: "oklch(0.48 0.15 30)" },
 ] as const;
-
-export function daysSince(date: string): number {
-  const then = Date.parse(`${date}T00:00:00Z`);
-  return Number.isNaN(then) ? 0 : Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
-}
 
 export function AgingCard({ unpaid }: { unpaid: UnpaidInvoice[] }) {
   const t = useT();
@@ -100,7 +96,18 @@ export function AgingCard({ unpaid }: { unpaid: UnpaidInvoice[] }) {
                         {invoice.seriesNumber} · {formatDate(invoice.invoiceDate)} · {t("home.daysAgo", { count: daysSince(invoice.invoiceDate) })}
                       </p>
                     </div>
-                    <span className="shrink-0 tabular-nums">{euros(invoice.totalAmountCents)}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="tabular-nums">{euros(invoice.totalAmountCents)}</span>
+                      <ButtonLink
+                        href={`/ingressos?recorda=${invoice.id}`}
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t("home.remindAria", { series: invoice.seriesNumber })}
+                        title={t("home.remind")}
+                      >
+                        <BellRingIcon />
+                      </ButtonLink>
+                    </span>
                   </li>
                 ))}
               </ul>

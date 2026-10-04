@@ -234,6 +234,8 @@ export type Dict = {
     newQuote: string;
     margin: string;
     marginHint: string;
+    remind: string;
+    remindAria: string;
     trendTitle: string;
     trendHint: string;
     trendIncome: string;
@@ -317,6 +319,16 @@ export type Dict = {
     sendEmailSuccess: string;
     sendEmailSimulated: string;
     sendEmailFailed: string;
+    sendReminder: string;
+    reminderTitle: string;
+    reminderDescription: string;
+    reminderSubmit: string;
+    reminderSuccess: string;
+    reminderSubject: string;
+    reminderBody: string;
+    emailSubjectDefault: string;
+    emailBodyDefault: string;
+    daysOverdue: string;
     searchPlaceholder: string;
     dateFrom: string;
     dateTo: string;

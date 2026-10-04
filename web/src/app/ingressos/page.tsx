@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckIcon,
   FileDownIcon,
   FilePenLineIcon,
   MailIcon,
+  ClockIcon,
+  BellRingIcon,
   MoreHorizontalIcon,
   PlusIcon,
   SearchIcon,
@@ -33,6 +35,8 @@ import {
   PageHeader,
   Segmented,
   TableSkeleton,
+  StatusBadge,
+  daysSince,
   formatDate,
   notifyError,
   notifySuccess,
@@ -76,6 +80,7 @@ export default function IncomePage() {
   const [deletingInvoice, setDeletingInvoice] = useState<IssuedInvoice | null>(null);
 
   const [emailingInvoice, setEmailingInvoice] = useState<IssuedInvoice | null>(null);
+  const [emailMode, setEmailMode] = useState<"invoice" | "reminder">("invoice");
   const [emailRecipient, setEmailRecipient] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
@@ -122,15 +127,35 @@ export default function IncomePage() {
   const unpaid = invoices.filter((invoice) => invoice.status === "UNPAID");
   const rectifiedSeries = new Set(invoices.map((invoice) => invoice.rectifiesSeriesNumber).filter(Boolean));
 
-  function startEmailInvoice(invoice: IssuedInvoice) {
+  function startEmailInvoice(invoice: IssuedInvoice, mode: "invoice" | "reminder" = "invoice") {
     const contact = contacts.find((c) => c.legalName === invoice.contactName);
+    const params = {
+      client: invoice.contactName,
+      series: invoice.seriesNumber,
+      amount: euros(invoice.totalAmountCents),
+      date: formatDate(invoice.invoiceDate),
+      days: daysSince(invoice.invoiceDate),
+    };
+    setEmailMode(mode);
     setEmailingInvoice(invoice);
     setEmailRecipient(contact?.email ?? "");
-    setEmailSubject(`Factura ${invoice.seriesNumber}`);
-    setEmailMessage(
-      `Benvolgut/da ${invoice.contactName},\n\nUs adjuntem la factura ${invoice.seriesNumber} en format PDF per un import de ${euros(invoice.totalAmountCents)}.\n\nAtentament,`
-    );
+    setEmailSubject(mode === "reminder" ? t("income.reminderSubject", params) : t("income.emailSubjectDefault", params));
+    setEmailMessage(mode === "reminder" ? t("income.reminderBody", params) : t("income.emailBodyDefault", params));
   }
+
+  // `?recorda=<id>` (from the dashboard) opens the reminder for that invoice once the list has loaded.
+  const remindHandled = useRef(false);
+  useEffect(() => {
+    if (remindHandled.current || data === null) return;
+    const id = new URLSearchParams(window.location.search).get("recorda");
+    if (id === null) return;
+    remindHandled.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    const invoice = data.invoices.find((row) => row.id === id);
+    if (invoice) startEmailInvoice(invoice, "reminder");
+    // startEmailInvoice only reads `data`, which is the dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   async function sendInvoiceEmail() {
     if (!emailingInvoice) return;
@@ -150,7 +175,7 @@ export default function IncomePage() {
       notifySuccess(
         res.simulated
           ? t("income.sendEmailSimulated")
-          : t("income.sendEmailSuccess", { email: emailRecipient.trim() })
+          : t(emailMode === "reminder" ? "income.reminderSuccess" : "income.sendEmailSuccess", { email: emailRecipient.trim() })
       );
       setEmailingInvoice(null);
     } catch (cause) {
@@ -230,6 +255,7 @@ export default function IncomePage() {
       onPaid={() => togglePaid(invoice)}
       onRectify={() => setRectifying(invoice)}
       onEmail={() => startEmailInvoice(invoice)}
+      onRemind={() => startEmailInvoice(invoice, "reminder")}
       onDelete={() => setDeletingInvoice(invoice)}
     />
   );
@@ -397,7 +423,10 @@ export default function IncomePage() {
                             <TableCell className="text-right tabular-nums">{euros(invoice.taxAmountCents)}</TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{euros(invoice.totalAmountCents)}</TableCell>
                             <TableCell>
-                              <PaidBadge status={invoice.status} />
+                              <span className="flex flex-wrap items-center gap-1.5">
+                                <PaidBadge status={invoice.status} />
+                                <OverdueChip invoice={invoice} />
+                              </span>
                             </TableCell>
                             <TableCell className="text-right">{actions(invoice)}</TableCell>
                           </TableRow>
@@ -417,6 +446,7 @@ export default function IncomePage() {
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             <PaidBadge status={invoice.status} />
+                            <OverdueChip invoice={invoice} />
                             {invoice.rectifiesSeriesNumber ? <RectificativaBadge of={invoice.rectifiesSeriesNumber} /> : null}
                           </div>
                         </div>
@@ -473,8 +503,8 @@ export default function IncomePage() {
       <Dialog open={emailingInvoice !== null} onOpenChange={(open) => !open && setEmailingInvoice(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t("income.sendEmailTitle")}</DialogTitle>
-            <DialogDescription>{t("income.sendEmailDescription")}</DialogDescription>
+            <DialogTitle>{emailMode === "reminder" ? t("income.reminderTitle") : t("income.sendEmailTitle")}</DialogTitle>
+            <DialogDescription>{emailMode === "reminder" ? t("income.reminderDescription") : t("income.sendEmailDescription")}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2 text-xs">
@@ -500,7 +530,7 @@ export default function IncomePage() {
             <Field id="email-message" label={t("income.sendEmailMessage")}>
               <textarea
                 id="email-message"
-                rows={5}
+                rows={emailMode === "reminder" ? 9 : 5}
                 value={emailMessage}
                 onChange={(e) => setEmailMessage(e.target.value)}
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
@@ -512,7 +542,7 @@ export default function IncomePage() {
               {t("common.cancel")}
             </Button>
             <Button type="button" onClick={sendInvoiceEmail} disabled={sendingEmail || !emailRecipient.trim()}>
-              {sendingEmail ? t("common.wait") : t("income.sendEmailSubmit")}
+              {sendingEmail ? t("common.wait") : emailMode === "reminder" ? t("income.reminderSubmit") : t("income.sendEmailSubmit")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -534,6 +564,18 @@ export default function IncomePage() {
   );
 }
 
+/** Days since issue for an unpaid invoice older than 30 days; nothing otherwise. */
+function OverdueChip({ invoice }: { invoice: IssuedInvoice }) {
+  const t = useT();
+  const days = daysSince(invoice.invoiceDate);
+  if (invoice.status !== "UNPAID" || invoice.totalAmountCents.startsWith("-") || days <= 30) return null;
+  return (
+    <StatusBadge tone={days > 90 ? "danger" : "warning"} title={t("home.daysAgo", { count: days })}>
+      <ClockIcon /> {t("income.daysOverdue", { count: days })}
+    </StatusBadge>
+  );
+}
+
 function InvoiceActions({
   invoice,
   organizationId,
@@ -543,6 +585,7 @@ function InvoiceActions({
   onPaid,
   onRectify,
   onEmail,
+  onRemind,
   onDelete,
 }: {
   invoice: IssuedInvoice;
@@ -553,6 +596,7 @@ function InvoiceActions({
   onPaid: () => void;
   onRectify: () => void;
   onEmail: () => void;
+  onRemind: () => void;
   onDelete: () => void;
 }) {
   const t = useT();
@@ -582,6 +626,11 @@ function InvoiceActions({
           <DropdownMenuItem onClick={onEmail}>
             <MailIcon /> {t("income.sendEmail")}
           </DropdownMenuItem>
+          {invoice.status === "UNPAID" && !invoice.totalAmountCents.startsWith("-") ? (
+            <DropdownMenuItem onClick={onRemind}>
+              <BellRingIcon /> {t("income.sendReminder")}
+            </DropdownMenuItem>
+          ) : null}
           {canRectify ? (
             <DropdownMenuItem onClick={onRectify}>
               <FilePenLineIcon /> {t("income.createRectificativa")}

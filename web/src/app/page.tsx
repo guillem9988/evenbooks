@@ -16,7 +16,7 @@ import {
 import { ButtonLink } from "@/components/ui/button-link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AgingCard, daysSince } from "@/components/dashboard/aging-card";
+import { AgingCard } from "@/components/dashboard/aging-card";
 import { FiscalCalendarCard } from "@/components/dashboard/fiscal-calendar-card";
 import { TrendChart, type TrendMonth } from "@/components/dashboard/trend-chart";
 import { useOrganizationId } from "@/components/shell";
@@ -29,6 +29,7 @@ import {
   PageHeader,
   PeriodPicker,
   currentPeriod,
+  daysSince,
   formatDate,
   periodLabel,
   periodRange,

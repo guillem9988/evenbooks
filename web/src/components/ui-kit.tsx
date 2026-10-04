@@ -584,6 +584,12 @@ export function formatDate(value: string | null): string {
   return year && month && day ? `${day}/${month}/${year}` : value;
 }
 
+/** Whole days since a YYYY-MM-DD date, never negative. */
+export function daysSince(date: string): number {
+  const then = Date.parse(`${date}T00:00:00Z`);
+  return Number.isNaN(then) ? 0 : Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+}
+
 export function messageOf(cause: unknown, fallback: string): string {
   return cause instanceof Error && cause.message ? cause.message : fallback;
 }
