@@ -18,8 +18,8 @@ export function trendWindow(end: Date, months: number): { from: Date; until: Dat
   return { from, until };
 }
 
-/** Net amount of a document: the base when known, otherwise total minus tax, otherwise the total. */
-function netCents(row: TrendRow): bigint {
+/** Net amount of a document (before VAT): the base when known, otherwise total minus tax. Unknown amounts count as zero. */
+export function netCents(row: Pick<TrendRow, "baseCents" | "totalCents" | "taxCents">): bigint {
   if (row.baseCents !== null) return row.baseCents;
   if (row.totalCents !== null) return row.totalCents - (row.taxCents ?? 0n);
   return 0n;

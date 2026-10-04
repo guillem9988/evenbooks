@@ -300,11 +300,12 @@ describe("issued invoices, quotes, and tax preview", { timeout: 35000 }, () => {
       paymentCents: string;
     };
     expect(body.disclaimer).toMatch(/not an AEAT filing/);
-    expect(body.incomeCents).toBe("100000");
+    // Income is the base without VAT; the expense has no breakdown, so its total counts as net.
+    expect(body.incomeCents).toBe("82645");
     expect(body.expenseCents).toBe("40000");
-    expect(body.netCents).toBe("60000");
+    expect(body.netCents).toBe("42645");
     expect(body.rate).toBe("0.20");
-    expect(body.paymentCents).toBe("12000");
+    expect(body.paymentCents).toBe("8529");
 
     await database.prisma.issuedInvoice.create({
       data: {
@@ -321,7 +322,7 @@ describe("issued invoices, quotes, and tax preview", { timeout: 35000 }, () => {
       method: "GET",
       url: `/organizations/${organizationId}/taxes/130?from=2026-01-01&to=2026-06-30`,
     });
-    expect((loss.json() as { netCents: string; paymentCents: string }).netCents).toBe("-140000");
+    expect((loss.json() as { netCents: string; paymentCents: string }).netCents).toBe("-157355");
     expect((loss.json() as { paymentCents: string }).paymentCents).toBe("0");
 
     await database.prisma.organization.delete({ where: { id: organizationId } });

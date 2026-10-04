@@ -3,7 +3,7 @@ import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/p
 import { parseExportRange } from "../reports/accountant-export.js";
 import { enumToRate, groupByRate, type TaxPercent } from "../billing/lines.js";
 import { previewModelo130 } from "../billing/modelo-130.js";
-import { monthlyTrend, trendWindow } from "../reports/trend.js";
+import { monthlyTrend, netCents, trendWindow } from "../reports/trend.js";
 import { cents, findOrganization, parseDay, readUuid } from "./org-params.js";
 
 export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClient): void {
@@ -37,8 +37,8 @@ export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClie
         },
       }),
     ]);
-    const income = issued.reduce((total, row) => total + row.totalAmountCents, 0n);
-    const expense = received.reduce((total, row) => total + (row.totalAmountCents ?? 0n), 0n);
+    const income = sumNet(issued);
+    const expense = sumNet(received);
     const outputVat = issued.reduce((total, row) => total + row.taxAmountCents, 0n);
     const inputVat = received.reduce((total, row) => total + (row.taxAmountCents ?? 0n), 0n);
     return reply.send({
@@ -168,9 +168,8 @@ export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClie
         where: { organizationId, status: InvoiceStatus.PARSED, invoiceDate: { gte: from, lte: to } },
       }),
     ]);
-    const income = issued.reduce((total, row) => total + row.totalAmountCents, 0n);
-    const expenses = received.reduce((total, row) => total + (row.totalAmountCents ?? 0n), 0n);
-    const preview = previewModelo130(income, expenses);
+    // Modelo 130 works on income and deductible expenses before VAT: IVA is neither income nor expense.
+    const preview = previewModelo130(sumNet(issued), sumNet(received));
     return reply.send({
       kind: "modelo-130-preview",
       disclaimer: "Preview only. This is not an AEAT filing.",
@@ -183,6 +182,15 @@ export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClie
       paymentCents: cents(preview.paymentCents),
     });
   });
+}
+
+type Amounts = { baseAmountCents: bigint | null; taxAmountCents: bigint | null; totalAmountCents: bigint | null };
+
+function sumNet(rows: Amounts[]): bigint {
+  return rows.reduce(
+    (total, row) => total + netCents({ baseCents: row.baseAmountCents, taxCents: row.taxAmountCents, totalCents: row.totalAmountCents }),
+    0n,
+  );
 }
 
 function presentBucket(bucket: { rate: TaxPercent; baseCents: bigint; taxCents: bigint }) {
