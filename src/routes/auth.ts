@@ -43,7 +43,7 @@ export interface GoogleTokenPayload {
 
 export async function verifyGoogleCredential(
   credential: string,
-  expectedClientId?: string | null,
+  expectedClientId: string | null,
 ): Promise<{ email: string; sub: string; name: string; picture: string | null } | Error> {
   try {
     const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
@@ -58,7 +58,8 @@ export async function verifyGoogleCredential(
     if (!data.sub) {
       return new Error("Invalid Google token: missing sub");
     }
-    if (expectedClientId && data.aud && data.aud !== expectedClientId) {
+    // The token must have been issued to this app; otherwise any site's Google login could be replayed here.
+    if (!expectedClientId || data.aud !== expectedClientId) {
       return new Error("Google token client ID mismatch");
     }
     return {
@@ -138,19 +139,23 @@ function resolveCallbackUri(request: FastifyRequest): string {
   return `${proto}://${host}/auth/google/callback`;
 }
 
+/** Slows down password guessing and sign-up spam: per client IP, on the routes that check credentials. */
+const AUTH_RATE_LIMIT = { max: 10, timeWindow: "1 minute" };
+
 export function registerAuthRoutes(
   app: FastifyInstance,
   prisma: PrismaClient,
   cookie: CookieConfig = LOCAL_COOKIE,
   registration: RegistrationConfig = { allowPublic: true, inviteCode: null },
   googleOAuth: GoogleOAuthConfig = { clientId: null, clientSecret: null },
-  _webOrigins: string[] = [],
+  webOrigins: string[] = [],
 ): void {
+  const safeRedirect = (target: unknown) => safeRedirectTarget(target, webOrigins);
   app.get("/auth/registration", async (_request, reply) => {
     return reply.send(registrationStatus(registration, googleOAuth));
   });
 
-  app.post("/auth/register", async (request, reply) => {
+  app.post("/auth/register", { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
     const status = registrationStatus(registration, googleOAuth);
     if (!status.open) {
       return reply.code(403).send({ error: "Registration is disabled" });
@@ -220,7 +225,7 @@ export function registerAuthRoutes(
     });
   });
 
-  app.post("/auth/login", async (request, reply) => {
+  app.post("/auth/login", { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
     const body = request.body as { email?: unknown; password?: unknown };
     const email = readEmail(body?.email);
     const password = readPassword(body?.password);
@@ -238,7 +243,10 @@ export function registerAuthRoutes(
     return reply.send(presentUser(user));
   });
 
-  app.post("/auth/google", async (request, reply) => {
+  app.post("/auth/google", { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
+    if (!googleOAuth.clientId) {
+      return reply.code(400).send({ error: "Google OAuth is not configured on the server" });
+    }
     const body = request.body as { credential?: unknown; inviteCode?: unknown };
     if (typeof body?.credential !== "string" || body.credential.trim() === "") {
       return reply.code(400).send({ error: "Google credential is required" });
@@ -266,7 +274,7 @@ export function registerAuthRoutes(
     const state = randomBytes(24).toString("hex");
     const statePayload = JSON.stringify({
       state,
-      redirect: query.redirect || "/",
+      redirect: safeRedirect(query.redirect),
       inviteCode: query.inviteCode || null,
     });
     reply.setCookie("mi_oauth_state", statePayload, {
@@ -300,7 +308,7 @@ export function registerAuthRoutes(
       try {
         const parsed = JSON.parse(stateCookie);
         expectedState = parsed.state;
-        redirectTarget = parsed.redirect || "/";
+        redirectTarget = safeRedirect(parsed.redirect);
         inviteCode = parsed.inviteCode || null;
       } catch {
         // ignore
@@ -406,4 +414,19 @@ function presentUser(user: {
       taxId: membership.organization.taxId,
     })),
   };
+}
+
+/**
+ * Where the OAuth flow may send the browser back to: a same-site path, or a URL on one of the
+ * configured web origins. Anything else becomes "/", so the login can't be used as an open redirect.
+ */
+export function safeRedirectTarget(target: unknown, webOrigins: string[]): string {
+  if (typeof target !== "string" || target === "") return "/";
+  if (target.startsWith("/") && !target.startsWith("//") && !target.startsWith("/\\")) return target;
+  try {
+    const url = new URL(target);
+    return webOrigins.includes(url.origin) ? url.toString() : "/";
+  } catch {
+    return "/";
+  }
 }

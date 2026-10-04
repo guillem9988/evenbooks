@@ -6,8 +6,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function registerOrganizationGuard(app: FastifyInstance, prisma: PrismaClient): void {
   app.addHook("preHandler", async (request, reply) => {
-    const path = request.url.split("?")[0] ?? "";
-    if (!path.startsWith("/organizations")) {
+    // Decide from what the router matched, never from the raw URL: the router percent-decodes the
+    // path, so "/%6Frganizations/<id>" or an encoded id would otherwise reach a handler unchecked.
+    const route = request.routeOptions.url ?? "";
+    if (!route.startsWith("/organizations")) {
       return;
     }
     const userId = await userIdFromRequest(prisma, request);
@@ -15,10 +17,12 @@ export function registerOrganizationGuard(app: FastifyInstance, prisma: PrismaCl
       return reply.code(401).send({ error: "Login required" });
     }
     request.userId = userId;
-    const match = /^\/organizations\/([^/]+)/.exec(path);
-    const organizationId = match?.[1];
-    if (organizationId === undefined || !UUID.test(organizationId)) {
+    const organizationId = (request.params as { organizationId?: string } | undefined)?.organizationId;
+    if (organizationId === undefined) {
       return;
+    }
+    if (!UUID.test(organizationId)) {
+      return reply.code(400).send({ error: "organizationId must be a UUID" });
     }
     const organization = await prisma.organization.findUnique({ where: { id: organizationId }, select: { id: true } });
     if (organization === null) {

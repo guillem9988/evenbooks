@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
+import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { loadConfig, type AppConfig } from "./config.js";
 import { createInvoiceProcessingQueue, INVOICE_PROCESSING_QUEUE } from "./lib/queue.js";
@@ -55,6 +56,24 @@ export async function buildServer(config: AppConfig) {
   });
   await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 20 } });
+  // Opt-in per route (see AUTH_RATE_LIMIT); in-memory, which is enough for a single API instance.
+  await app.register(rateLimit, { global: false });
+
+  // Never send internals (SQL, stack traces, file paths) to the browser; they stay in the log.
+  app.setErrorHandler((error: { statusCode?: number }, request, reply) => {
+    const status = error.statusCode ?? 500;
+    if (status >= 500) {
+      request.log.error({ err: error }, "request failed");
+      return reply.code(status).send({ error: "Internal server error" });
+    }
+    return reply.code(status).send(error);
+  });
+
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("X-Frame-Options", "DENY");
+  });
 
   registerAuthRoutes(app, database.prisma, config.cookie, config.registration, config.googleOAuth, config.webOrigins);
   registerOrganizationGuard(app, database.prisma);

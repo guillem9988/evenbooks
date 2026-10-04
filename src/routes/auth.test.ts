@@ -1,7 +1,7 @@
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
-import { registerAuthRoutes, verifyGoogleCredential } from "./auth.js";
+import { registerAuthRoutes, safeRedirectTarget, verifyGoogleCredential } from "./auth.js";
 
 describe("verifyGoogleCredential", () => {
   it("rejects when tokeninfo endpoint fails", async () => {
@@ -11,7 +11,7 @@ describe("verifyGoogleCredential", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await verifyGoogleCredential("bad-token");
+    const result = await verifyGoogleCredential("bad-token", "my-app");
     expect(result).toBeInstanceOf(Error);
     if (result instanceof Error) {
       expect(result.message).toContain("Invalid Value");
@@ -31,7 +31,7 @@ describe("verifyGoogleCredential", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await verifyGoogleCredential("token-unverified");
+    const result = await verifyGoogleCredential("token-unverified", "my-app");
     expect(result).toBeInstanceOf(Error);
     if (result instanceof Error) {
       expect(result.message).toContain("not verified");
@@ -58,6 +58,19 @@ describe("verifyGoogleCredential", () => {
       expect(result.message).toContain("mismatch");
     }
 
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects any token when the server has no Google client ID, or the token has no audience", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ sub: "1", email: "user@example.com", email_verified: "true", aud: "someone-elses-app" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await verifyGoogleCredential("token", null)).toBeInstanceOf(Error);
+
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sub: "1", email: "user@example.com", email_verified: "true" }) });
+    expect(await verifyGoogleCredential("token", "my-app")).toBeInstanceOf(Error);
     vi.unstubAllGlobals();
   });
 
@@ -139,5 +152,20 @@ describe("Google Auth routes", () => {
     expect(cookies).toBeDefined();
     const stateCookie = Array.isArray(cookies) ? cookies.find((c) => c.startsWith("mi_oauth_state=")) : cookies;
     expect(stateCookie).toBeDefined();
+  });
+});
+
+describe("safeRedirectTarget", () => {
+  const origins = ["https://matchinvoice.vercel.app"];
+
+  it("keeps same-site paths and configured web origins", () => {
+    expect(safeRedirectTarget("/ingressos?nova=1", origins)).toBe("/ingressos?nova=1");
+    expect(safeRedirectTarget("https://matchinvoice.vercel.app/despeses", origins)).toBe("https://matchinvoice.vercel.app/despeses");
+  });
+
+  it("sends everything else to /", () => {
+    for (const target of ["https://evil.example/phish", "//evil.example", "/\\evil.example", "javascript:alert(1)", undefined, ""]) {
+      expect(safeRedirectTarget(target, origins)).toBe("/");
+    }
   });
 });
