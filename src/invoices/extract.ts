@@ -1,5 +1,6 @@
 import OpenAI from "openai";
-import { TaxRateType } from "../../generated/prisma/client.js";
+import { TaxRateType, type ExpenseCategory } from "../../generated/prisma/client.js";
+import { CATEGORY_PROMPT, parseCategory } from "./categorize.js";
 import { parseBankAmount } from "../statements/parse-csv.js";
 
 export class ExtractionError extends Error {
@@ -20,6 +21,8 @@ export interface ExtractedInvoice {
   totalAmountCents: bigint;
   taxRate: TaxRateType;
   isSimplified: boolean;
+  /** The extractor's guess at the expense category, when it gives one. */
+  expenseCategory: ExpenseCategory | null;
   raw: unknown;
 }
 
@@ -34,6 +37,7 @@ const TEXT_FIELDS = [
   "total_amount",
   "tax_rate_percent",
   "is_simplified_receipt",
+  "expense_category",
 ] as const;
 
 const INVOICE_SCHEMA = {
@@ -51,6 +55,7 @@ const INVOICE_SCHEMA = {
     total_amount: { type: ["string", "null"] },
     tax_rate_percent: { type: ["integer", "null"] },
     is_simplified_receipt: { type: "boolean" },
+    expense_category: { type: ["string", "null"], enum: ["OFFICE", "TRAVEL", "SOFTWARE", "MEALS", "OTHER", null] },
   },
 } as const;
 
@@ -105,6 +110,7 @@ function fromFields(fields: Record<string, string | null>, raw: unknown): Extrac
     totalAmountCents: parseBankAmount(total),
     taxRate: mapTaxRate(fields.tax_rate_percent ?? null),
     isSimplified: /^(1|true|yes|si|sí)$/i.test(fields.is_simplified_receipt ?? ""),
+    expenseCategory: parseCategory(fields.expense_category),
     raw,
   };
 }
@@ -134,7 +140,7 @@ async function openAiExtract(
       {
         role: "system",
         content:
-          "Extract invoice fields into the schema. Do not invent amounts. If the total is unreadable, return null for total_amount.",
+          "Extract invoice fields into the schema. Do not invent amounts. If the total is unreadable, return null for total_amount. " + CATEGORY_PROMPT,
       },
       { role: "user", content },
     ],
@@ -167,6 +173,7 @@ function normalizeExtractedMap(parsed: Record<string, unknown>): Record<string, 
         : String(parsed.tax_rate_percent),
     is_simplified_receipt:
       parsed.is_simplified_receipt === true || parsed.is_simplified_receipt === "true" ? "true" : "false",
+    expense_category: asString(parsed.expense_category),
   };
 }
 
@@ -205,7 +212,7 @@ async function anthropicExtract(
       model: targetModel,
       max_tokens: 1024,
       system:
-        "You are an expert invoice extraction tool. Extract invoice fields and respond ONLY with a raw JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent, is_simplified_receipt. Use null for missing fields. Do not include markdown codeblocks or explanation.",
+        "You are an expert invoice extraction tool. Extract invoice fields and respond ONLY with a raw JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent, is_simplified_receipt, expense_category. Use null for missing fields. Do not include markdown codeblocks or explanation. " + CATEGORY_PROMPT,
       messages: [{ role: "user", content }],
     }),
   });
@@ -238,7 +245,7 @@ async function deepseekExtract(
       {
         role: "system",
         content:
-          "You are an expert invoice extraction tool. Extract invoice fields and respond ONLY with a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent, is_simplified_receipt. Use null for missing or unknown fields. Do not guess totals.",
+          "You are an expert invoice extraction tool. Extract invoice fields and respond ONLY with a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent, is_simplified_receipt, expense_category. Use null for missing or unknown fields. Do not guess totals. " + CATEGORY_PROMPT,
       },
       { role: "user", content: `Extract invoice fields from this text:\n\n${source.text}` },
     ],
@@ -295,7 +302,7 @@ async function geminiExtract(
             system_instruction: {
               parts: [
                 {
-                  text: "You are an expert invoice extraction AI. Extract invoice fields and return ONLY a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent (integer: 21, 10, 4, 0 or null), is_simplified_receipt (boolean). Never invent amounts. If unreadable, return null.",
+                  text: "You are an expert invoice extraction AI. Extract invoice fields and return ONLY a valid JSON object with keys: vendor_name, vendor_tax_id, invoice_number, invoice_date (YYYY-MM-DD), currency, base_amount, tax_amount, total_amount, tax_rate_percent (integer: 21, 10, 4, 0 or null), is_simplified_receipt (boolean), expense_category. Never invent amounts. If unreadable, return null. " + CATEGORY_PROMPT,
                 },
               ],
             },

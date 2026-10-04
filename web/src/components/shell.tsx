@@ -117,12 +117,16 @@ function SearchButton({ onClick }: { onClick: () => void }) {
 
 function LoadingSession() {
   const t = useT();
-  const [slow, setSlow] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    const timer = setTimeout(() => setSlow(true), 2500);
-    return () => clearTimeout(timer);
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed((Date.now() - started) / 1000), 500);
+    return () => clearInterval(timer);
   }, []);
+
+  // A cold API can take ~30-50 s. The bar eases towards 95% so it keeps moving without promising a time.
+  const progress = Math.min(95, 100 * (1 - Math.exp(-elapsed / 18)));
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col md:flex-row" aria-busy="true" aria-label={t("common.loadingSession")}>
@@ -137,13 +141,15 @@ function LoadingSession() {
       <div className="flex-1 p-6 lg:p-10">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="mt-6 h-32 w-full" />
-        {slow ? (
-          <div className="mt-6 flex items-center gap-3 rounded-xl border border-border/80 bg-muted/40 p-4 text-sm text-muted-foreground shadow-xs animate-in fade-in duration-500">
-            <span className="relative flex size-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-amber-500" />
-            </span>
-            <p className="leading-snug">{t("common.wakingServer")}</p>
+        {elapsed >= 2.5 ? (
+          <div className="mx-auto mt-10 flex max-w-xs flex-col items-center gap-4 rounded-2xl border bg-card p-6 text-center shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <Logo className="size-11 animate-pulse" />
+            <p role="status" className="font-semibold">
+              {t("common.wakeLoading")}
+            </p>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
+              <div className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
+            </div>
           </div>
         ) : null}
       </div>

@@ -12,6 +12,7 @@ import {
   readLabeledText,
   type ExtractedInvoice,
 } from "./extract.js";
+import { guessCategory, suggestCategory } from "./categorize.js";
 import { recognizeImage, renderPdfPage } from "./ocr.js";
 import { extractPdfText } from "./pdf-text.js";
 
@@ -162,7 +163,18 @@ export async function processInvoiceJob(
     const hasText = text !== null && text.trim().length >= TEXT_LAYER_MIN;
     const file: InvoiceFile = { bytes, mimeType: invoice.mimeType, isPdf, text: hasText ? text : null };
     const extracted = await extractWithChain(extractor, file, recognize);
-    await saveParsed(prisma, invoice.id, extracted);
+    // A category chosen by hand (e.g. at upload) always wins over the automatic one.
+    // The category is a convenience: a failed history lookup must not fail the extraction.
+    const expenseCategory =
+      invoice.expenseCategory ??
+      (await suggestCategory(prisma, invoice.organizationId, {
+        vendorName: extracted.vendorName,
+        vendorTaxId: extracted.vendorTaxId,
+        aiCategory: extracted.expenseCategory,
+        text: file.text,
+        excludeId: invoice.id,
+      }).catch(() => extracted.expenseCategory ?? guessCategory(extracted.vendorName, file.text)));
+    await saveParsed(prisma, invoice.id, { ...extracted, expenseCategory });
     await reconcileOrganization(prisma, invoice.organizationId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invoice extraction failed";
@@ -284,6 +296,7 @@ async function saveParsed(prisma: PrismaClient, invoiceId: string, extracted: Ex
       totalAmountCents: extracted.totalAmountCents,
       taxRate: extracted.taxRate,
       isSimplified: extracted.isSimplified,
+      expenseCategory: extracted.expenseCategory,
       errorMessage: null,
       ocrRawResponse: JSON.parse(
         JSON.stringify(extracted.raw, (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value)),

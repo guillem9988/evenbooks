@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { ExpenseCategory, InvoiceStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
+import { suggestCategory } from "../invoices/categorize.js";
 import { reconcileOrganization } from "../matching/reconcile.js";
 import { cents, day, findOrganization, parseDay, readUuid } from "./org-params.js";
 
@@ -46,6 +47,31 @@ export function registerExpenseRoutes(app: FastifyInstance, prisma: PrismaClient
     });
   });
 
+  app.post("/organizations/:organizationId/expenses/auto-categorize", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const pending = await prisma.invoice.findMany({
+      where: { organizationId, status: InvoiceStatus.PARSED, expenseCategory: null },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, vendorName: true, vendorTaxId: true },
+    });
+    let categorized = 0;
+    // One at a time, so a vendor categorized earlier in this pass teaches the later ones.
+    for (const row of pending) {
+      const category = await suggestCategory(prisma, organizationId, { vendorName: row.vendorName, vendorTaxId: row.vendorTaxId, excludeId: row.id });
+      if (category !== null) {
+        await prisma.invoice.update({ where: { id: row.id }, data: { expenseCategory: category } });
+        categorized += 1;
+      }
+    }
+    return reply.send({ categorized, remaining: pending.length - categorized });
+  });
+
   app.post("/organizations/:organizationId/expenses", async (request, reply) => {
     const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
     if (organizationId instanceof Error) {
@@ -74,9 +100,13 @@ export function registerExpenseRoutes(app: FastifyInstance, prisma: PrismaClient
     const baseCents = parseCentsInput(body.baseAmountCents);
     const taxCents = parseCentsInput(body.taxAmountCents);
 
+    const vendorName = typeof body.vendorName === "string" ? body.vendorName.trim().slice(0, 255) || null : null;
+    const vendorTaxId = typeof body.vendorTaxId === "string" ? body.vendorTaxId.trim().toUpperCase().slice(0, 50) || null : null;
     let category: ExpenseCategory | null = null;
     if (typeof body.expenseCategory === "string" && CATEGORIES.has(body.expenseCategory)) {
       category = body.expenseCategory as ExpenseCategory;
+    } else {
+      category = await suggestCategory(prisma, organizationId, { vendorName, vendorTaxId });
     }
 
     const invoiceDate = body.invoiceDate ? parseDay(body.invoiceDate) : new Date();
@@ -89,8 +119,8 @@ export function registerExpenseRoutes(app: FastifyInstance, prisma: PrismaClient
         mimeType: "",
         fileSizeBytes: 0,
         status: InvoiceStatus.PARSED,
-        vendorName: typeof body.vendorName === "string" ? body.vendorName.trim().slice(0, 255) || null : null,
-        vendorTaxId: typeof body.vendorTaxId === "string" ? body.vendorTaxId.trim().toUpperCase().slice(0, 50) || null : null,
+        vendorName,
+        vendorTaxId,
         invoiceNumber: typeof body.invoiceNumber === "string" ? body.invoiceNumber.trim().slice(0, 100) || null : null,
         invoiceDate,
         baseAmountCents: baseCents ?? null,

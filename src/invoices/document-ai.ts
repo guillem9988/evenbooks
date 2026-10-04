@@ -94,6 +94,7 @@ export function fromDocumentAi(document: DocumentAiDocument): ExtractedInvoice {
     totalAmountCents: total,
     taxRate: mapTaxRate(vatPercent(entities, net, tax)),
     isSimplified: false,
+    expenseCategory: null,
     raw: { source: "document-ai", entities: summarize(entities) },
   };
 }

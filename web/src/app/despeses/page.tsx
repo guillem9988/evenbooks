@@ -11,6 +11,7 @@ import {
   RotateCcwIcon,
   SearchIcon,
   SparklesIcon,
+  WandSparklesIcon,
   Trash2Icon,
   UploadIcon,
   XIcon,
@@ -132,6 +133,22 @@ export default function ExpensesPage() {
     }
   }
 
+  const [autoCategorizing, setAutoCategorizing] = useState(false);
+
+  async function autoCategorize() {
+    setAutoCategorizing(true);
+    try {
+      const result = await api<{ categorized: number; remaining: number }>(`/organizations/${organizationId}/expenses/auto-categorize`, { method: "POST" });
+      if (result.categorized > 0) notifySuccess(t("expenses.autoCategorizeDone", { count: result.categorized }));
+      else notifyError(null, t("expenses.autoCategorizeNone"));
+      await reload();
+    } catch (cause) {
+      notifyError(cause, t("expenses.autoCategorizeFailed"));
+    } finally {
+      setAutoCategorizing(false);
+    }
+  }
+
   async function saveCategory(row: ExpenseItem, expenseCategory: string) {
     setSaving(row.id);
     try {
@@ -169,6 +186,11 @@ export default function ExpensesPage() {
             <Button variant="outline" onClick={() => void reload()} disabled={loading}>
               <RefreshCwIcon /> {t("expenses.refresh")}
             </Button>
+            {uncategorized.length > 0 ? (
+              <Button variant="outline" onClick={() => void autoCategorize()} disabled={autoCategorizing} title={t("expenses.autoCategoryHint")}>
+                <WandSparklesIcon /> {autoCategorizing ? t("common.wait") : `${t("expenses.autoCategorize")} (${uncategorized.length})`}
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={() => setCreatingManual(true)}>
               <PlusIcon /> {t("expenses.newManual")}
             </Button>
