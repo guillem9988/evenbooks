@@ -20,11 +20,24 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # Same Postgres, Redis and MinIO as local development (docker-compose.yml).
-      - name: Start services
+      # Same Postgres and Redis as local development (docker-compose.yml).
+      - name: Start Postgres and Redis
+        run: docker compose up -d --wait postgres redis
+      # MinIO no longer publishes public images, so CI uses SeaweedFS as the S3-compatible store
+      # on the same port and bucket as .env.example.
+      - name: Start S3 (SeaweedFS)
+        env:
+          AWS_ACCESS_KEY_ID: matchinvoice
+          AWS_SECRET_ACCESS_KEY: matchinvoice-secret
+          AWS_DEFAULT_REGION: us-east-1
         run: |
-          docker compose up -d --wait postgres redis minio
-          docker compose run --rm minio-init
+          docker run -d --name s3 -p 59000:8333 chrislusf/seaweedfs server -s3 -dir=/data
+          for attempt in $(seq 1 30); do
+            if aws --endpoint-url http://localhost:59000 s3 mb s3://matchinvoice; then exit 0; fi
+            sleep 2
+          done
+          docker logs s3
+          exit 1
       - run: cp .env.example .env
       - run: npm ci
       - run: npx prisma migrate deploy
