@@ -17,12 +17,7 @@ export type Dict = {
     retry: string;
     loading: string;
     loadingSession: string;
-    wakeTitle: string;
-    wakeStep1: string;
-    wakeStep2: string;
-    wakeStep3: string;
-    wakeStep4: string;
-    wakeRetry: string;
+    wakeLoading: string;
     actions: string;
     organization: string;
     skipToContent: string;

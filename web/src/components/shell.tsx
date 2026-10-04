@@ -125,9 +125,7 @@ function LoadingSession() {
     return () => clearInterval(timer);
   }, []);
 
-  // A cold API can take ~30-50 s to answer. Say something friendly instead of showing a frozen skeleton.
-  const step = elapsed < 10 ? "common.wakeStep1" : elapsed < 25 ? "common.wakeStep2" : elapsed < 45 ? "common.wakeStep3" : "common.wakeStep4";
-  // Eases towards 95% over ~50 s so the bar keeps moving without promising an exact time.
+  // A cold API can take ~30-50 s. The bar eases towards 95% so it keeps moving without promising a time.
   const progress = Math.min(95, 100 * (1 - Math.exp(-elapsed / 18)));
 
   return (
@@ -144,22 +142,14 @@ function LoadingSession() {
         <Skeleton className="h-8 w-48" />
         <Skeleton className="mt-6 h-32 w-full" />
         {elapsed >= 2.5 ? (
-          <div className="mx-auto mt-10 flex max-w-md flex-col items-center gap-4 rounded-2xl border bg-card p-6 text-center shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="mx-auto mt-10 flex max-w-xs flex-col items-center gap-4 rounded-2xl border bg-card p-6 text-center shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-500">
             <Logo className="size-11 animate-pulse" />
-            <div className="flex flex-col gap-1">
-              <p className="font-semibold">{t("common.wakeTitle")}</p>
-              <p key={step} role="status" className="min-h-10 text-sm text-pretty text-muted-foreground animate-in fade-in duration-500">
-                {t(step)}
-              </p>
-            </div>
+            <p role="status" className="font-semibold">
+              {t("common.wakeLoading")}
+            </p>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
               <div className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
             </div>
-            {elapsed >= 45 ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
-                {t("common.wakeRetry")}
-              </Button>
-            ) : null}
           </div>
         ) : null}
       </div>
