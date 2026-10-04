@@ -25,7 +25,7 @@ export function PageHeader({
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
         {description ? <p className="max-w-2xl text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
@@ -91,8 +91,8 @@ export function EmptyState({
   icon?: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-10 text-center">
-      <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed bg-card/50 px-4 py-10 text-center">
+      <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
         <Icon className="size-5" />
       </span>
       <p className="text-sm font-medium">{title}</p>
@@ -316,17 +316,21 @@ export function KpiCard({
   icon?: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <Card size="sm">
+    <Card size="sm" className="transition-shadow hover:shadow-md">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        {Icon ? <Icon className="size-4 text-muted-foreground" /> : null}
+        {Icon ? (
+          <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary" aria-hidden>
+            <Icon className="size-4" />
+          </span>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-1">
         <p
           className={cn(
             "text-2xl font-semibold tracking-tight tabular-nums",
-            tone === "positive" && "text-emerald-700 dark:text-emerald-300",
-            tone === "negative" && "text-red-700 dark:text-red-300",
+            tone === "positive" && "text-emerald-700 dark:text-emerald-400",
+            tone === "negative" && "text-red-700 dark:text-red-400",
           )}
         >
           {value}

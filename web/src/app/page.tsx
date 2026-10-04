@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useState } from "react";
 import {
   AlertCircleIcon,
@@ -14,9 +13,12 @@ import {
   ScaleIcon,
   TrendingUpIcon,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button-link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AgingCard, daysSince } from "@/components/dashboard/aging-card";
+import { FiscalCalendarCard } from "@/components/dashboard/fiscal-calendar-card";
+import { TrendChart, type TrendMonth } from "@/components/dashboard/trend-chart";
 import { useOrganizationId } from "@/components/shell";
 import { PaidBadge, RectificativaBadge } from "@/components/status-badges";
 import {
@@ -72,6 +74,7 @@ interface Quote {
 
 interface OverviewData {
   dashboard: Dashboard;
+  trend: TrendMonth[] | null;
   invoices: IssuedInvoice[];
   expenses: Expense[];
   quotes: Quote[];
@@ -95,13 +98,18 @@ export default function HomePage() {
 
   const load = useCallback(async (): Promise<OverviewData> => {
     const base = `/organizations/${organizationId}`;
-    const [dashboard, issued, spent, listed] = await Promise.all([
+    const [dashboard, trend, issued, spent, listed] = await Promise.all([
       api<Dashboard>(`${base}/dashboard?from=${from}&to=${to}`),
+      // The trend is a nice-to-have: an older API without the endpoint must not break the page.
+      api<{ months: TrendMonth[] }>(`${base}/dashboard/trend?months=12`).then(
+        (body) => body.months,
+        () => null,
+      ),
       api<{ issuedInvoices: IssuedInvoice[] }>(`${base}/issued-invoices`),
       api<{ expenses: Expense[] }>(`${base}/expenses`),
       api<{ quotes: Quote[] }>(`${base}/quotes`),
     ]);
-    return { dashboard, invoices: issued.issuedInvoices, expenses: spent.expenses, quotes: listed.quotes };
+    return { dashboard, trend, invoices: issued.issuedInvoices, expenses: spent.expenses, quotes: listed.quotes };
   }, [organizationId, from, to]);
 
   const { data, error, loading, reload } = useLoad(load, t("home.loadFailed"));
@@ -132,10 +140,9 @@ export default function HomePage() {
 
 function Overview({ data }: { data: OverviewData }) {
   const t = useT();
-  const { dashboard, invoices, expenses, quotes } = data;
+  const { dashboard, trend, invoices, expenses, quotes } = data;
   const vatBalance = (BigInt(dashboard.ivaRepercutitCents) - BigInt(dashboard.ivaSuportatCents)).toString();
   const unpaid = invoices.filter((invoice) => invoice.status === "UNPAID" && !invoice.totalAmountCents.startsWith("-"));
-  const unpaidTotal = sumCents(unpaid.map((invoice) => invoice.totalAmountCents));
   const overdue = unpaid.filter((invoice) => daysSince(invoice.invoiceDate) > 30);
   const failed = expenses.filter((expense) => expense.status === "FAILED");
   const uncategorized = expenses.filter((expense) => expense.status === "PARSED" && expense.expenseCategory === null);
@@ -233,18 +240,18 @@ function Overview({ data }: { data: OverviewData }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" render={<Link href="/ingressos?nova=1" />}>
+        <ButtonLink size="sm" href="/ingressos?nova=1">
           <PlusIcon /> {t("home.newInvoice")}
-        </Button>
-        <Button variant="outline" size="sm" render={<Link href="/pressupostos?nou=1" />}>
+        </ButtonLink>
+        <ButtonLink variant="outline" size="sm" href="/pressupostos?nou=1">
           <FileTextIcon /> {t("home.newQuote")}
-        </Button>
-        <Button variant="outline" size="sm" render={<Link href="/despeses?nova=1" />}>
+        </ButtonLink>
+        <ButtonLink variant="outline" size="sm" href="/despeses?nova=1">
           <ReceiptIcon /> {t("home.newExpense")}
-        </Button>
-        <Button variant="outline" size="sm" render={<Link href="/banc?importa=1" />}>
+        </ButtonLink>
+        <ButtonLink variant="outline" size="sm" href="/banc?importa=1">
           <LandmarkIcon /> {t("home.importBank")}
-        </Button>
+        </ButtonLink>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
@@ -256,7 +263,7 @@ function Overview({ data }: { data: OverviewData }) {
           <CardContent>
             {tasks.length === 0 ? (
               <div className="flex items-center gap-3 rounded-lg border border-dashed p-4 text-sm">
-                <CheckCircle2Icon className="size-5 text-emerald-600" aria-hidden />
+                <CheckCircle2Icon className="size-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
                 <span>{t("home.allClear")}</span>
               </div>
             ) : (
@@ -267,9 +274,9 @@ function Overview({ data }: { data: OverviewData }) {
                       <span
                         className={cn(
                           "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full",
-                          task.tone === "danger" && "bg-red-100 text-red-700",
-                          task.tone === "warning" && "bg-amber-100 text-amber-800",
-                          task.tone === "info" && "bg-sky-100 text-sky-800",
+                          task.tone === "danger" && "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+                          task.tone === "warning" && "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+                          task.tone === "info" && "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
                         )}
                         aria-hidden
                       >
@@ -280,9 +287,9 @@ function Overview({ data }: { data: OverviewData }) {
                         <p className="text-sm text-muted-foreground">{task.detail}</p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" className="self-start sm:self-auto" render={<Link href={task.href} />}>
+                    <ButtonLink variant="outline" size="sm" className="self-start sm:self-auto" href={task.href}>
                       {task.cta} <ArrowRightIcon />
-                    </Button>
+                    </ButtonLink>
                   </li>
                 ))}
               </ul>
@@ -290,29 +297,18 @@ function Overview({ data }: { data: OverviewData }) {
           </CardContent>
         </Card>
 
+        <AgingCard unpaid={unpaid} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <Card>
           <CardHeader>
-            <CardTitle>{t("home.unpaid")}</CardTitle>
-            <CardDescription>{t("home.unpaidHint")}</CardDescription>
+            <CardTitle>{t("home.trendTitle")}</CardTitle>
+            <CardDescription>{t("home.trendHint")}</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div>
-              <p className="text-3xl font-semibold tracking-tight tabular-nums">{euros(unpaidTotal)}</p>
-              <p className="text-sm text-muted-foreground">
-                {unpaid.length} {unpaid.length === 1 ? t("home.invoice") : t("home.invoices")}
-                {overdue.length > 0 ? t("home.overdueSuffix", { count: overdue.length }) : ""}
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Button render={<Link href="/ingressos?nova=1" />}>
-                <PlusIcon /> {t("home.newInvoice")}
-              </Button>
-              <Button variant="outline" render={<Link href="/banc?importa=1" />}>
-                <LandmarkIcon /> {t("home.importBank")}
-              </Button>
-            </div>
-          </CardContent>
+          <CardContent>{trend ? <TrendChart months={trend} /> : <p className="text-sm text-muted-foreground">{t("home.trendFailed")}</p>}</CardContent>
         </Card>
+        <FiscalCalendarCard />
       </div>
 
       <Card>
@@ -321,9 +317,9 @@ function Overview({ data }: { data: OverviewData }) {
             <CardTitle>{t("home.recent")}</CardTitle>
             <CardDescription>{t("home.recentHint")}</CardDescription>
           </div>
-          <Button variant="ghost" size="sm" render={<Link href="/ingressos" />}>
+          <ButtonLink variant="ghost" size="sm" href="/ingressos">
             {t("home.seeAll")} <ArrowRightIcon />
-          </Button>
+          </ButtonLink>
         </CardHeader>
         <CardContent>
           {recent.length === 0 ? (
@@ -331,9 +327,9 @@ function Overview({ data }: { data: OverviewData }) {
               title={t("home.emptyInvoices")}
               hint={t("home.emptyInvoicesHint")}
               action={
-                <Button render={<Link href="/ingressos?nova=1" />}>
+                <ButtonLink href="/ingressos?nova=1">
                   <PlusIcon /> {t("home.newInvoice")}
-                </Button>
+                </ButtonLink>
               }
             />
           ) : (
@@ -363,7 +359,3 @@ function Overview({ data }: { data: OverviewData }) {
   );
 }
 
-function daysSince(date: string): number {
-  const then = Date.parse(`${date}T00:00:00Z`);
-  return Number.isNaN(then) ? 0 : Math.floor((Date.now() - then) / 86_400_000);
-}

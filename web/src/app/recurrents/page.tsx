@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useState } from "react";
 import { PauseIcon, PencilIcon, PlayIcon, PlusIcon, RepeatIcon, Trash2Icon, UsersIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button-link";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineEditor, emptyLine, lineTotals, validateLines, type CatalogPick, type DraftLine, type LineErrors } from "@/components/line-editor";
@@ -291,7 +291,7 @@ export default function RecurringPage() {
             icon={UsersIcon}
             title={t("recurring.needClient")}
             hint={t("recurring.needClientHint")}
-            action={<Button render={<Link href="/contactes?nou=1" />}>{t("recurring.addClient")}</Button>}
+            action={<ButtonLink href="/contactes?nou=1">{t("recurring.addClient")}</ButtonLink>}
           />
         ) : series.length === 0 ? (
           <EmptyState

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckIcon, LockIcon } from "lucide-react";
+import { CheckIcon, FileTextIcon, LandmarkIcon, LockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { Logo } from "@/components/logo";
 import { useOrganization } from "@/components/organization";
 import { EMAIL, ErrorBanner, Field, Segmented, messageOf, notifySuccess } from "@/components/ui-kit";
 import { useI18n, useT } from "@/i18n";
@@ -238,33 +239,44 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
 
   return (
     <main id="contingut" className="grid min-h-dvh flex-1 lg:grid-cols-2">
-      <section className="hidden flex-col justify-between bg-primary p-10 text-primary-foreground lg:flex" aria-label={t("auth.ariaWhat")}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary-foreground text-sm font-semibold text-primary">MI</span>
+      <section
+        className="relative hidden flex-col justify-between overflow-hidden bg-[linear-gradient(160deg,oklch(0.42_0.09_175),oklch(0.3_0.06_195))] p-10 text-white lg:flex"
+        aria-label={t("auth.ariaWhat")}
+      >
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] [background-size:32px_32px] [mask-image:radial-gradient(ellipse_at_top_left,black,transparent_70%)]"
+          aria-hidden
+        />
+        <div className="pointer-events-none absolute -right-32 -bottom-32 size-96 rounded-full bg-[oklch(0.75_0.13_175)] opacity-25 blur-3xl" aria-hidden />
+        <div className="relative flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <Logo className="size-9 bg-white/15 from-white/20 to-white/5 backdrop-blur" />
             <span className="text-lg font-semibold">MatchInvoice</span>
           </div>
-          <LanguageSwitcher className="h-8 w-auto border-primary-foreground/30 bg-primary text-xs text-primary-foreground" />
+          <LanguageSwitcher className="h-8 w-auto border-white/25 bg-white/10 text-xs text-white [&>option]:text-foreground" />
         </div>
-        <div className="flex max-w-md flex-col gap-6">
-          <h2 className="text-3xl font-semibold tracking-tight">{t("auth.hero")}</h2>
+        <div className="relative flex max-w-md flex-col gap-6">
+          <h2 className="text-4xl font-semibold tracking-tight text-balance">{t("auth.hero")}</h2>
           <ul className="flex flex-col gap-3 text-sm">
             {dict.auth.points.map((point) => (
-              <li key={point} className="flex items-start gap-2">
-                <CheckIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <li key={point} className="flex items-start gap-2.5 text-white/90">
+                <span className="mt-0.5 flex size-4.5 shrink-0 items-center justify-center rounded-full bg-white/15" aria-hidden>
+                  <CheckIcon className="size-3" />
+                </span>
                 {point}
               </li>
             ))}
           </ul>
+          <MatchPreview />
         </div>
-        <p className="text-xs opacity-80">{t("auth.footer")}</p>
+        <p className="relative text-xs text-white/70">{t("auth.footer")}</p>
       </section>
       <section className="flex items-center justify-center px-4 py-10">
         <Card className="w-full max-w-md">
           <CardHeader>
             <div className="mb-2 flex items-center justify-between gap-2 lg:hidden">
               <div className="flex items-center gap-2">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground">MI</span>
+                <Logo />
                 <span className="font-semibold">MatchInvoice</span>
               </div>
               <LanguageSwitcher className="h-8 w-auto text-xs" />
@@ -435,5 +447,38 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
         </Card>
       </section>
     </main>
+  );
+}
+
+/** Decorative: a bank line snapping onto its invoice, which is what the product does. */
+function MatchPreview() {
+  return (
+    <div className="mt-4 flex flex-col gap-2 text-sm" aria-hidden>
+      <div className="flex items-center justify-between rounded-xl bg-white/10 px-4 py-3 ring-1 ring-white/15 backdrop-blur">
+        <span className="flex items-center gap-2.5">
+          <span className="flex size-7 items-center justify-center rounded-md bg-white/15">
+            <LandmarkIcon className="size-3.5" />
+          </span>
+          <span className="font-mono text-xs text-white/80">TRANSF · ACME DISSENY SL</span>
+        </span>
+        <span className="font-medium tabular-nums">+2.420,00 €</span>
+      </div>
+      <div className="ml-6 flex items-center gap-2 text-white/70">
+        <span className="h-4 w-px bg-white/30" />
+        <span className="flex size-5 items-center justify-center rounded-full bg-emerald-300 text-emerald-950">
+          <CheckIcon className="size-3" />
+        </span>
+        <span className="text-xs tabular-nums">98%</span>
+      </div>
+      <div className="flex items-center justify-between rounded-xl bg-white px-4 py-3 text-neutral-900 shadow-xl">
+        <span className="flex items-center gap-2.5">
+          <span className="flex size-7 items-center justify-center rounded-md bg-teal-50 text-teal-700">
+            <FileTextIcon className="size-3.5" />
+          </span>
+          <span className="font-medium">F-2026-041</span>
+        </span>
+        <span className="font-medium tabular-nums">2.420,00 €</span>
+      </div>
+    </div>
   );
 }

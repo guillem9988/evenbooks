@@ -3,78 +3,32 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import {
-  BanknoteIcon,
-  FileTextIcon,
-  HouseIcon,
-  LandmarkIcon,
-  LogOutIcon,
-  MenuIcon,
-  PackageIcon,
-  ReceiptIcon,
-  RepeatIcon,
-  ScaleIcon,
-  SettingsIcon,
-  UsersIcon,
-} from "lucide-react";
+import { LogOutIcon, MenuIcon, SearchIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthScreen } from "@/components/auth-screen";
+import { CommandPalette } from "@/components/command-palette";
+import { ALL_NAV_LINKS, NAV_GROUPS } from "@/components/nav";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { Logo } from "@/components/logo";
 import { OrganizationProvider, useOrganization } from "@/components/organization";
+import { ThemeProvider, ThemeSwitcher } from "@/components/theme";
 import { notifyError } from "@/components/ui-kit";
 import { I18nProvider, useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-interface NavLink {
-  href: string;
-  labelKey: string;
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-}
-
-const GROUPS: Array<{ labelKey: string | null; links: NavLink[] }> = [
-  {
-    labelKey: null,
-    links: [{ href: "/", labelKey: "nav.home", icon: HouseIcon }],
-  },
-  {
-    labelKey: "nav.groupSales",
-    links: [
-      { href: "/ingressos", labelKey: "nav.income", icon: BanknoteIcon },
-      { href: "/pressupostos", labelKey: "nav.quotes", icon: FileTextIcon },
-      { href: "/recurrents", labelKey: "nav.recurring", icon: RepeatIcon },
-      { href: "/cataleg", labelKey: "nav.catalog", icon: PackageIcon },
-    ],
-  },
-  {
-    labelKey: "nav.groupPurchases",
-    links: [
-      { href: "/despeses", labelKey: "nav.expenses", icon: ReceiptIcon },
-      { href: "/banc", labelKey: "nav.bank", icon: LandmarkIcon },
-    ],
-  },
-  {
-    labelKey: "nav.groupManage",
-    links: [
-      { href: "/impostos", labelKey: "nav.taxes", icon: ScaleIcon },
-      { href: "/contactes", labelKey: "nav.contacts", icon: UsersIcon },
-      { href: "/configuracio", labelKey: "nav.settings", icon: SettingsIcon },
-    ],
-  },
-];
-
-const ALL_LINKS = GROUPS.flatMap((group) => group.links);
-
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <I18nProvider>
-      <OrganizationProvider>
-        <ShellInner>{children}</ShellInner>
-      </OrganizationProvider>
-    </I18nProvider>
+    <ThemeProvider>
+      <I18nProvider>
+        <OrganizationProvider>
+          <ShellInner>{children}</ShellInner>
+        </OrganizationProvider>
+      </I18nProvider>
+    </ThemeProvider>
   );
 }
 
@@ -97,7 +51,19 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 function Frame({ children }: { children: React.ReactNode }) {
   const { ready, organizationId } = useOrganization();
   const pathname = usePathname();
-  const t = useT();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    if (!organizationId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [organizationId]);
 
   if (!ready) {
     return <LoadingSession />;
@@ -108,20 +74,44 @@ function Frame({ children }: { children: React.ReactNode }) {
     return <AuthScreen initialMode={isRegister ? "register" : "login"} />;
   }
 
+  const openPalette = () => setPaletteOpen(true);
+
   return (
     <div className="flex min-h-dvh flex-1 flex-col md:flex-row">
-      <aside className="hidden border-r bg-sidebar md:sticky md:top-0 md:flex md:h-dvh md:w-64 md:shrink-0 md:flex-col">
-        <div className="px-4 pt-5 pb-4">
+      <aside className="hidden border-r border-sidebar-border bg-sidebar md:sticky md:top-0 md:flex md:h-dvh md:w-64 md:shrink-0 md:flex-col">
+        <div className="flex flex-col gap-4 px-4 pt-5 pb-3">
           <Brand />
+          <SearchButton onClick={openPalette} />
         </div>
-        <Navigation className="flex-1 overflow-y-auto px-3" />
-        <Account className="border-t p-3" />
+        <Navigation className="flex-1 overflow-y-auto px-3 pb-3" />
+        <Account className="border-t border-sidebar-border p-3" />
       </aside>
-      <MobileBar />
+      <MobileBar onSearch={openPalette} />
       <main id="contingut" tabIndex={-1} className="flex-1 px-4 py-6 outline-none sm:px-6 lg:px-10 lg:py-8">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">{children}</div>
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 animate-in fade-in duration-300" key={pathname}>
+          {children}
+        </div>
       </main>
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
+  );
+}
+
+function SearchButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-keyshortcuts="Control+K Meta+K"
+      className="flex h-9 w-full items-center gap-2 rounded-lg border border-sidebar-border bg-background px-2.5 text-sm text-muted-foreground shadow-xs outline-none transition-colors hover:border-ring/40 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      <SearchIcon className="size-4" aria-hidden />
+      <span className="flex-1 truncate text-left">{t("command.open")}</span>
+      <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none" aria-hidden>
+        Ctrl K
+      </kbd>
+    </button>
   );
 }
 
@@ -164,12 +154,10 @@ function LoadingSession() {
 function Brand() {
   const t = useT();
   return (
-    <Link href="/" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-      <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground" aria-hidden>
-        MI
-      </span>
+    <Link href="/" className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+      <Logo />
       <span className="leading-tight">
-        <span className="block text-sm font-semibold">MatchInvoice</span>
+        <span className="block text-sm font-semibold tracking-tight">MatchInvoice</span>
         <span className="block text-xs text-muted-foreground">{t("brand.tagline")}</span>
       </span>
     </Link>
@@ -181,11 +169,11 @@ function Navigation({ className, onNavigate }: { className?: string; onNavigate?
   const t = useT();
   return (
     <nav aria-label={t("common.mainNav")} className={cn("flex flex-col gap-4", className)}>
-      {GROUPS.map((group) => (
+      {NAV_GROUPS.map((group) => (
         <div key={group.labelKey ?? "inici"} className="flex flex-col gap-0.5">
-          {group.labelKey ? <p className="px-3 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">{t(group.labelKey)}</p> : null}
+          {group.labelKey ? <p className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground/80 uppercase">{t(group.labelKey)}</p> : null}
           {group.links.map(({ href, labelKey, icon: Icon }) => {
-            const active = pathname === href;
+            const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link
                 key={href}
@@ -193,11 +181,14 @@ function Navigation({ className, onNavigate }: { className?: string; onNavigate?
                 onClick={onNavigate}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
-                  active ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
+                  "group/nav relative flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
+                  active
+                    ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
                 )}
               >
-                <Icon className="size-4" aria-hidden />
+                {active ? <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary" aria-hidden /> : null}
+                <Icon className={cn("size-4", active ? "text-primary" : "text-muted-foreground group-hover/nav:text-foreground")} aria-hidden />
                 {t(labelKey)}
               </Link>
             );
@@ -214,7 +205,10 @@ function Account({ className }: { className?: string }) {
   const [busy, setBusy] = useState(false);
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <LanguageSwitcher className="h-8 w-full text-xs" />
+      <div className="flex items-center gap-2">
+        <LanguageSwitcher className="h-8 min-w-0 flex-1 text-xs" />
+        <ThemeSwitcher className="w-24 shrink-0" />
+      </div>
       <div className="flex items-center gap-2">
         {avatarUrl ? (
           <img
@@ -224,7 +218,7 @@ function Account({ className }: { className?: string }) {
             className="size-8 shrink-0 rounded-full object-cover"
           />
         ) : (
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase" aria-hidden>
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary uppercase" aria-hidden>
             {(displayName || organizationName || "?").slice(0, 1)}
           </span>
         )}
@@ -260,11 +254,11 @@ function Account({ className }: { className?: string }) {
   );
 }
 
-function MobileBar() {
+function MobileBar({ onSearch }: { onSearch: () => void }) {
   const pathname = usePathname();
   const t = useT();
   const [open, setOpen] = useState(false);
-  const labels = useMemo(() => Object.fromEntries(ALL_LINKS.map((link) => [link.href, t(link.labelKey)])), [t]);
+  const labels = useMemo(() => Object.fromEntries(ALL_NAV_LINKS.map((link) => [link.href, t(link.labelKey)])), [t]);
   const currentLabel = labels[pathname];
   return (
     <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur md:hidden">
@@ -272,9 +266,10 @@ function MobileBar() {
         <MenuIcon />
       </Button>
       <p className="flex-1 truncate text-sm font-semibold">{currentLabel ?? "MatchInvoice"}</p>
-      <span className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground" aria-hidden>
-        MI
-      </span>
+      <Button type="button" variant="ghost" size="icon" aria-label={t("command.open")} onClick={onSearch}>
+        <SearchIcon />
+      </Button>
+      <Logo className="size-7" />
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="w-72 gap-0 p-0">
           <SheetHeader className="border-b">

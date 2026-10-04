@@ -3,7 +3,8 @@ import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/p
 import { parseExportRange } from "../reports/accountant-export.js";
 import { enumToRate, groupByRate, type TaxPercent } from "../billing/lines.js";
 import { previewModelo130 } from "../billing/modelo-130.js";
-import { cents, findOrganization, readUuid } from "./org-params.js";
+import { monthlyTrend, trendWindow } from "../reports/trend.js";
+import { cents, findOrganization, parseDay, readUuid } from "./org-params.js";
 
 export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClient): void {
   app.get("/organizations/:organizationId/dashboard", async (request, reply) => {
@@ -49,6 +50,50 @@ export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClie
       ivaRepercutitCents: cents(outputVat),
       ivaSuportatCents: cents(inputVat),
       unmatchedBankLines: unmatched,
+    });
+  });
+
+  app.get("/organizations/:organizationId/dashboard/trend", async (request, reply) => {
+    const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
+    if (organizationId instanceof Error) {
+      return reply.code(400).send({ error: organizationId.message });
+    }
+    const query = request.query as { months?: string; to?: string };
+    const months = query.months === undefined ? 12 : Number(query.months);
+    if (!Number.isInteger(months) || months < 1 || months > 36) {
+      return reply.code(400).send({ error: "months must be an integer from 1 to 36" });
+    }
+    const end = query.to === undefined ? new Date() : parseDay(query.to);
+    if (end === null) {
+      return reply.code(400).send({ error: "to must be a YYYY-MM-DD date" });
+    }
+    if ((await findOrganization(prisma, organizationId)) === null) {
+      return reply.code(404).send({ error: "Organization not found" });
+    }
+    const { from, until } = trendWindow(end, months);
+    const [issued, received] = await Promise.all([
+      prisma.issuedInvoice.findMany({
+        where: { organizationId, invoiceDate: { gte: from, lt: until } },
+        select: { invoiceDate: true, baseAmountCents: true, taxAmountCents: true, totalAmountCents: true },
+      }),
+      prisma.invoice.findMany({
+        where: { organizationId, status: InvoiceStatus.PARSED, invoiceDate: { gte: from, lt: until } },
+        select: { invoiceDate: true, baseAmountCents: true, taxAmountCents: true, totalAmountCents: true },
+      }),
+    ]);
+    const toRow = (row: { invoiceDate: Date | null; baseAmountCents: bigint | null; taxAmountCents: bigint | null; totalAmountCents: bigint | null }) => ({
+      date: row.invoiceDate,
+      baseCents: row.baseAmountCents,
+      taxCents: row.taxAmountCents,
+      totalCents: row.totalAmountCents,
+    });
+    const trend = monthlyTrend(issued.map(toRow), received.map(toRow), end, months);
+    return reply.send({
+      months: trend.map((row) => ({
+        month: row.month,
+        incomeCents: cents(row.incomeCents),
+        expenseCents: cents(row.expenseCents),
+      })),
     });
   });
 

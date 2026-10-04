@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckIcon,
@@ -16,6 +15,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button-link";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -276,7 +276,7 @@ export default function IncomePage() {
               icon={UsersIcon}
               title={t("income.needClient")}
               hint={t("income.needClientHint")}
-              action={<Button render={<Link href="/contactes?nou=1" />}>{t("income.addClient")}</Button>}
+              action={<ButtonLink href="/contactes?nou=1">{t("income.addClient")}</ButtonLink>}
             />
           ) : invoices.length === 0 ? (
             <EmptyState

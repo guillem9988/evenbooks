@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRightLeftIcon, FileDownIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, Trash2Icon, UsersIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button-link";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -247,7 +247,7 @@ export default function QuotesPage() {
             icon={UsersIcon}
             title={t("quotes.needClient")}
             hint={t("quotes.needClientHint")}
-            action={<Button render={<Link href="/contactes?nou=1" />}>{t("quotes.addClient")}</Button>}
+            action={<ButtonLink href="/contactes?nou=1">{t("quotes.addClient")}</ButtonLink>}
           />
         ) : quotes.length === 0 ? (
           <EmptyState

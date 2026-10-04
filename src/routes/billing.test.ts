@@ -75,6 +75,16 @@ describe("issued invoices, quotes, and tax preview", { timeout: 35000 }, () => {
     expect(BigInt(general?.baseCents ?? "0") + BigInt(reduced?.baseCents ?? "0")).toBe(15000n);
     expect(BigInt(general?.taxCents ?? "0") + BigInt(reduced?.taxCents ?? "0")).toBe(2600n);
 
+    const trend = await inject({ method: "GET", url: `/organizations/${organizationId}/dashboard/trend?months=3&to=2026-03-31` });
+    expect(trend.statusCode).toBe(200);
+    expect((trend.json() as { months: Array<{ month: string; incomeCents: string }> }).months).toEqual([
+      { month: "2026-01", incomeCents: "0", expenseCents: "0" },
+      { month: "2026-02", incomeCents: "0", expenseCents: "0" },
+      { month: "2026-03", incomeCents: "15000", expenseCents: "0" },
+    ]);
+    const badTrend = await inject({ method: "GET", url: `/organizations/${organizationId}/dashboard/trend?months=0` });
+    expect(badTrend.statusCode).toBe(400);
+
     const quote = await inject({
       method: "POST",
       url: `/organizations/${organizationId}/quotes`,

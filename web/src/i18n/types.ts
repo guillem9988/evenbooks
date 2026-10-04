@@ -48,6 +48,26 @@ export type Dict = {
     all: string;
     allFeminine: string;
   };
+  theme: {
+    label: string;
+    light: string;
+    dark: string;
+    system: string;
+  };
+  command: {
+    open: string;
+    title: string;
+    description: string;
+    placeholder: string;
+    empty: string;
+    groupCreate: string;
+    groupNavigate: string;
+    groupPreferences: string;
+    hint: string;
+    themeLight: string;
+    themeDark: string;
+    themeSystem: string;
+  };
   brand: {
     tagline: string;
   };
@@ -214,6 +234,36 @@ export type Dict = {
     newQuote: string;
     margin: string;
     marginHint: string;
+    trendTitle: string;
+    trendHint: string;
+    trendIncome: string;
+    trendExpenses: string;
+    trendResult: string;
+    trendMonth: string;
+    trendEmpty: string;
+    trendShowTable: string;
+    trendShowChart: string;
+    trendTotal: string;
+    trendFailed: string;
+    aging: string;
+    aging0: string;
+    aging30: string;
+    aging60: string;
+    aging90: string;
+    agingNone: string;
+    oldestDebtors: string;
+    daysAgo: string;
+    fiscalTitle: string;
+    fiscalHint: string;
+    fiscalQuarterly: string;
+    fiscalAnnual: string;
+    fiscalDue: string;
+    fiscalDaysLeft: string;
+    fiscalToday: string;
+    fiscalTomorrow: string;
+    fiscalOpen: string;
+    fiscalCta: string;
+    fiscalNote: string;
   };
   income: {
     title: string;
