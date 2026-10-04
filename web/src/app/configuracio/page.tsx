@@ -1265,7 +1265,7 @@ export default function SettingsPage() {
                   <CardTitle>Login amb Google (Google Identity Services)</CardTitle>
                 </div>
                 <CardDescription>
-                  Permet l'accés instantani i segur amb un sol clic amb comptes de Google (OAuth 2.0 i FedCM).
+                  Permet l’accés instantani i segur amb un sol clic amb comptes de Google (OAuth 2.0 i FedCM).
                 </CardDescription>
               </div>
               {googleAuthStatus?.googleAuthEnabled ? (
@@ -1290,7 +1290,7 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <p>
-                  Per activar-lo a producció, crea un client OAuth a la nova <strong>Google Auth Platform</strong> de Google Cloud Console i afegeix <code className="font-mono text-foreground font-semibold">GOOGLE_CLIENT_ID</code> i <code className="font-mono text-foreground font-semibold">GOOGLE_CLIENT_SECRET</code> a les variables d'entorn.
+                  Per activar-lo a producció, crea un client OAuth a la nova <strong>Google Auth Platform</strong> de Google Cloud Console i afegeix <code className="font-mono text-foreground font-semibold">GOOGLE_CLIENT_ID</code> i <code className="font-mono text-foreground font-semibold">GOOGLE_CLIENT_SECRET</code> a les variables d’entorn.
                 </p>
                 <div className="mt-2 flex flex-col gap-1.5 font-mono text-[11px] bg-background/60 p-2.5 rounded border">
                   <div>

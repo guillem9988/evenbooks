@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckIcon, FileTextIcon, LandmarkIcon, LockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,19 +89,22 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
     }
   }, []);
 
+  // Google calls back long after initialize(); a ref lets that callback use the latest invite code and handlers.
+  const onGoogleCredential = useRef<(credential: string) => void>(() => {});
+
   // Initialize Google Identity Services (One Tap / Credential)
   useEffect(() => {
     if (!googleClientId) return;
     const scriptId = "google-gsi-client";
 
     const onScriptLoad = () => {
-      const g = (window as unknown as { google?: { accounts?: { id?: any } } }).google;
-      if (g?.accounts?.id) {
-        g.accounts.id.initialize({
+      const g = googleIdentity();
+      if (g) {
+        g.initialize({
           client_id: googleClientId,
           callback: (res: { credential?: string }) => {
             if (res.credential) {
-              void handleGoogleCredential(res.credential);
+              onGoogleCredential.current(res.credential);
             }
           },
           auto_select: false,
@@ -146,15 +149,19 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
     }
   }
 
+  useEffect(() => {
+    onGoogleCredential.current = (credential) => void handleGoogleCredential(credential);
+  });
+
   function handleGoogleClick() {
     setError(null);
     if (!googleClientId) {
       setError(t("auth.googleNotConfigured"));
       return;
     }
-    const g = (window as unknown as { google?: { accounts?: { id?: any } } }).google;
-    if (g?.accounts?.id) {
-      g.accounts.id.prompt((notification: any) => {
+    const g = googleIdentity();
+    if (g) {
+      g.prompt((notification) => {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
           const qs = inviteCode.trim() ? `?inviteCode=${encodeURIComponent(inviteCode.trim())}` : "";
           window.location.href = apiPath(`/auth/google${qs}`);
@@ -481,4 +488,19 @@ function MatchPreview() {
       </div>
     </div>
   );
+}
+
+interface GoogleIdentity {
+  initialize(options: {
+    client_id: string;
+    callback: (response: { credential?: string }) => void;
+    auto_select?: boolean;
+    cancel_on_tap_outside?: boolean;
+  }): void;
+  prompt(listener?: (notification: { isNotDisplayed(): boolean; isSkippedMoment(): boolean }) => void): void;
+}
+
+/** The Google Identity Services client, once its script has loaded. */
+function googleIdentity(): GoogleIdentity | undefined {
+  return (window as unknown as { google?: { accounts?: { id?: GoogleIdentity } } }).google?.accounts?.id;
 }
