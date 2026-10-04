@@ -306,6 +306,11 @@ describe("issued invoices, quotes, and tax preview", { timeout: 35000 }, () => {
     expect(body.netCents).toBe("42645");
     expect(body.rate).toBe("0.20");
     expect(body.paymentCents).toBe("8529");
+    expect((preview.json() as { cumulative: { quarter: number; paymentCents: string; previousPaymentsCents: string } }).cumulative).toMatchObject({
+      quarter: 1,
+      paymentCents: "8529",
+      previousPaymentsCents: "0",
+    });
 
     await database.prisma.issuedInvoice.create({
       data: {
@@ -324,6 +329,24 @@ describe("issued invoices, quotes, and tax preview", { timeout: 35000 }, () => {
     });
     expect((loss.json() as { netCents: string; paymentCents: string }).netCents).toBe("-157355");
     expect((loss.json() as { paymentCents: string }).paymentCents).toBe("0");
+
+    // Q2 on its own is a loss, but the filing accumulates from January: Q1 paid 85,29 € and the
+    // cumulative net is now negative, so nothing is due.
+    const q2 = await inject({
+      method: "GET",
+      url: `/organizations/${organizationId}/taxes/130?from=2026-04-01&to=2026-06-30`,
+    });
+    expect((q2.json() as { cumulative: Record<string, string | number> }).cumulative).toMatchObject({
+      quarter: 2,
+      netCents: "-157355",
+      previousPaymentsCents: "8529",
+      paymentCents: "0",
+    });
+    const custom = await inject({
+      method: "GET",
+      url: `/organizations/${organizationId}/taxes/130?from=2026-01-01&to=2026-06-30`,
+    });
+    expect((custom.json() as { cumulative: unknown }).cumulative).toBeNull();
 
     await database.prisma.organization.delete({ where: { id: organizationId } });
   });

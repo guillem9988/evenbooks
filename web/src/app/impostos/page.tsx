@@ -6,10 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useOrganizationId } from "@/components/shell";
-import { CardsSkeleton, EmptyState, ErrorBanner, KpiCard, PageHeader, QuarterPicker, quarterRange, useLoad, useQuarter } from "@/components/ui-kit";
+import { CardsSkeleton, EmptyState, ErrorBanner, KpiCard, PageHeader, QuarterPicker, formatDate, quarterRange, useLoad, useQuarter } from "@/components/ui-kit";
 import { useT } from "@/i18n";
 import { api } from "@/lib/api";
 import { euros } from "@/lib/money";
+import { cn } from "@/lib/utils";
 
 interface Bucket {
   rate: number;
@@ -27,6 +28,16 @@ interface Modelo130 {
   expenseCents: string;
   netCents: string;
   paymentCents: string;
+  /** Present for a calendar quarter: the year-to-date figures the AEAT form uses. Older APIs omit it. */
+  cumulative?: {
+    to: string;
+    incomeCents: string;
+    expenseCents: string;
+    netCents: string;
+    grossPaymentCents: string;
+    previousPaymentsCents: string;
+    paymentCents: string;
+  } | null;
 }
 
 export default function TaxesPage() {
@@ -73,7 +84,11 @@ export default function TaxesPage() {
               value={euros((balance < 0n ? -balance : balance).toString())}
               hint={t("taxes.model303hint")}
             />
-            <KpiCard label={t("taxes.model130")} value={euros(data.model130.paymentCents)} hint={t("taxes.model130hint")} />
+            {data.model130.cumulative ? (
+              <KpiCard label={t("taxes.model130")} value={euros(data.model130.cumulative.paymentCents)} hint={t("taxes.model130cumulativeHint")} />
+            ) : (
+              <KpiCard label={t("taxes.model130")} value={euros(data.model130.paymentCents)} hint={t("taxes.model130hint")} />
+            )}
             <KpiCard
               label={t("taxes.net")}
               value={euros(data.model130.netCents)}
@@ -81,6 +96,7 @@ export default function TaxesPage() {
               tone={data.model130.netCents.startsWith("-") ? "negative" : undefined}
             />
           </div>
+          {data.model130.cumulative ? <Breakdown130 cumulative={data.model130.cumulative} quarterNet={data.model130.netCents} /> : null}
           <div className="grid gap-4 lg:grid-cols-2">
             <RateCard title={t("taxes.outputVat")} description={t("taxes.outputVatHint")} rows={data.model303.issued} />
             <RateCard title={t("taxes.inputVat")} description={t("taxes.inputVatHint")} rows={data.model303.received} />
@@ -88,6 +104,42 @@ export default function TaxesPage() {
         </>
       ) : null}
     </>
+  );
+}
+
+function Breakdown130({ cumulative, quarterNet }: { cumulative: NonNullable<Modelo130["cumulative"]>; quarterNet: string }) {
+  const t = useT();
+  const rows: Array<[string, string, string, boolean?]> = [
+    ["01", t("taxes.box01"), cumulative.incomeCents],
+    ["02", t("taxes.box02"), cumulative.expenseCents],
+    ["03", t("taxes.box03"), cumulative.netCents],
+    ["04", t("taxes.box04"), cumulative.grossPaymentCents],
+    ["05", t("taxes.box05"), cumulative.previousPaymentsCents],
+    ["07", t("taxes.box07"), cumulative.paymentCents, true],
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("taxes.breakdownTitle")}</CardTitle>
+        <CardDescription>{t("taxes.breakdownHint", { to: formatDate(cumulative.to) })}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <dl className="divide-y rounded-lg border">
+          {rows.map(([box, label, value, total]) => (
+            <div key={box} className={cn("flex items-center gap-3 px-3 py-2 text-sm", total && "bg-muted/50 font-semibold")}>
+              <dt className="flex flex-1 items-center gap-2.5">
+                <span className="w-7 shrink-0 rounded bg-muted px-1 py-0.5 text-center font-mono text-[11px] text-muted-foreground">{box}</span>
+                {label}
+              </dt>
+              <dd className="tabular-nums">{euros(value)}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          {t("taxes.quarterOnly", { net: euros(quarterNet) })} · {t("taxes.breakdownNote")}
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

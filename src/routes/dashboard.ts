@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import { parseExportRange } from "../reports/accountant-export.js";
 import { enumToRate, groupByRate, type TaxPercent } from "../billing/lines.js";
-import { previewModelo130 } from "../billing/modelo-130.js";
+import { cumulativeModelo130, exactQuarter, previewModelo130, type QuarterAmounts } from "../billing/modelo-130.js";
 import { monthlyTrend, netCents, trendWindow } from "../reports/trend.js";
 import { cents, findOrganization, parseDay, readUuid } from "./org-params.js";
 
@@ -170,6 +170,44 @@ export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClie
     ]);
     // Modelo 130 works on income and deductible expenses before VAT: IVA is neither income nor expense.
     const preview = previewModelo130(sumNet(issued), sumNet(received));
+    // For a calendar quarter, also give the filing figure: accumulated since January, minus earlier payments.
+    const quarter = exactQuarter(range.from, range.to);
+    let cumulative = null;
+    if (quarter !== null) {
+      const yearStart = new Date(Date.UTC(quarter.year, 0, 1));
+      const [issuedYtd, receivedYtd] = await Promise.all([
+        prisma.issuedInvoice.findMany({
+          where: { organizationId, invoiceDate: { gte: yearStart, lte: to } },
+          select: { invoiceDate: true, baseAmountCents: true, taxAmountCents: true, totalAmountCents: true },
+        }),
+        prisma.invoice.findMany({
+          where: { organizationId, status: InvoiceStatus.PARSED, invoiceDate: { gte: yearStart, lte: to } },
+          select: { invoiceDate: true, baseAmountCents: true, taxAmountCents: true, totalAmountCents: true },
+        }),
+      ]);
+      const quarters: QuarterAmounts[] = [1, 2, 3, 4].map(() => ({ incomeCents: 0n, expenseCents: 0n }));
+      const quarterOf = (date: Date | null) => (date === null ? undefined : quarters[Math.floor(date.getUTCMonth() / 3)]);
+      for (const row of issuedYtd) {
+        const bucket = quarterOf(row.invoiceDate);
+        if (bucket) bucket.incomeCents += sumNet([row]);
+      }
+      for (const row of receivedYtd) {
+        const bucket = quarterOf(row.invoiceDate);
+        if (bucket) bucket.expenseCents += sumNet([row]);
+      }
+      const result = cumulativeModelo130(quarters, quarter.quarter);
+      cumulative = {
+        from: yearStart.toISOString().slice(0, 10),
+        to: range.to,
+        quarter: quarter.quarter,
+        incomeCents: cents(result.incomeCents),
+        expenseCents: cents(result.expenseCents),
+        netCents: cents(result.netCents),
+        grossPaymentCents: cents(result.grossPaymentCents),
+        previousPaymentsCents: cents(result.previousPaymentsCents),
+        paymentCents: cents(result.paymentCents),
+      };
+    }
     return reply.send({
       kind: "modelo-130-preview",
       disclaimer: "Preview only. This is not an AEAT filing.",
@@ -180,6 +218,7 @@ export function registerDashboardRoutes(app: FastifyInstance, prisma: PrismaClie
       netCents: cents(preview.netCents),
       rate: preview.rate,
       paymentCents: cents(preview.paymentCents),
+      cumulative,
     });
   });
 }

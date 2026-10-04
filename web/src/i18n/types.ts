@@ -649,6 +649,17 @@ export type Dict = {
     model303hint: string;
     model130: string;
     model130hint: string;
+    model130cumulativeHint: string;
+    breakdownTitle: string;
+    breakdownHint: string;
+    box01: string;
+    box02: string;
+    box03: string;
+    box04: string;
+    box05: string;
+    box07: string;
+    breakdownNote: string;
+    quarterOnly: string;
     net: string;
     netHint: string;
     outputVat: string;
