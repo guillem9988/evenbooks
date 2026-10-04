@@ -17,7 +17,12 @@ export type Dict = {
     retry: string;
     loading: string;
     loadingSession: string;
-    wakingServer: string;
+    wakeTitle: string;
+    wakeStep1: string;
+    wakeStep2: string;
+    wakeStep3: string;
+    wakeStep4: string;
+    wakeRetry: string;
     actions: string;
     organization: string;
     skipToContent: string;
@@ -467,6 +472,11 @@ export type Dict = {
     vatSupportedHint: string;
     toReview: string;
     toReviewHint: string;
+    autoCategorize: string;
+    autoCategorizeDone: string;
+    autoCategorizeNone: string;
+    autoCategorizeFailed: string;
+    autoCategoryHint: string;
     empty: string;
     emptyHint: string;
     listLabel: string;
