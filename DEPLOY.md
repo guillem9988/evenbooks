@@ -111,7 +111,7 @@ El `Dockerfile` instal·la dependències, i en arrencar executa `prisma migrate 
 
 Quan el deploy acabi en **Live**, copia la URL de dalt de tot del servei, per exemple `https://matchinvoice-api.onrender.com`. Aquesta és la URL pública de l’API (no és secreta).
 
-Comprova-la: obre `https://matchinvoice-api.onrender.com/health`. Ha de dir `"status":"ok"` i `"up"` a `postgres`, `redis` i `minio` (que aquí vol dir Supabase Storage).
+Comprova-la: obre `https://matchinvoice-api.onrender.com/health`. Ha de dir `"status":"ok"` i `"up"` a `postgres`, `redis` i `minio` (el nom històric del bloc S3; aquí vol dir Supabase Storage).
 
 ### 4.4 Opcional: OpenAI
 
@@ -243,4 +243,11 @@ El panell cridarà `/backend/*` al seu propi domini i Vercel ho reenviarà a Ren
 | `API_PROXY_URL` | Recomanat | URL de Render; el panell usa `/backend/*` (galeta de primera part) |
 | `NEXT_PUBLIC_API_URL` | No (evitar) | URL de Render en cross-site; no la combinis amb `API_PROXY_URL` |
 
-En local no cal res d’això: `docker compose up -d`, `npm run dev` a l’arrel i `npm run dev` a `web/` fan servir MinIO, Redis i Postgres locals.
+En local no cal res d’això: `docker compose up -d`, `npm run dev` a l’arrel i `npm run dev` a `web/` fan servir S3 (SeaweedFS), Redis i Postgres locals.
+
+## Abans de fer pública la instància
+
+- `ALLOW_PUBLIC_REGISTRATION=false` (ja és el valor per defecte a producció) o registre amb `REGISTRATION_INVITE_CODE`. Amb el registre obert, qualsevol pot gastar les claus d’IA del servidor i enviar correus des del teu domini.
+- Si Vercel fa servir el proxy `/backend` (`API_PROXY_URL` definit i `NEXT_PUBLIC_API_URL` buit), canvia `COOKIE_SAME_SITE` a `lax` a Render: la cookie passa a ser de primera part i queda protegida contra CSRF. Deixa `none` només si el navegador crida l’API de Render directament.
+- Si actives el login amb Google, `GOOGLE_CLIENT_ID` ha d’estar definit a Render: sense, l’API rebutja els tokens de Google.
+- Vulnerabilitats: vegeu [`SECURITY.md`](SECURITY.md).
