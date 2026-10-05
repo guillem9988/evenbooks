@@ -424,6 +424,13 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
               </Button>
             </form>
 
+            <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+              {mode === "register" ? t("auth.privacyConsent") : t("auth.privacyInfo")}{" "}
+              <a href="/privacitat" className="font-medium text-primary underline-offset-4 hover:underline">
+                {t("auth.privacyLink")}
+              </a>
+            </p>
+
             {/* Navigation toggle link */}
             <div className="text-center text-xs text-muted-foreground pt-1">
               {mode === "login" ? (
