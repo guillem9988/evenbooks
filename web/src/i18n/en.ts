@@ -2,6 +2,7 @@ import type { Dict } from "./types";
 
 export const en: Dict = {
   common: {
+    privacy: "Privacy policy",
     cancel: "Cancel",
     wait: "One sec…",
     retry: "Try again",
@@ -154,6 +155,9 @@ export const en: Dict = {
     cannotDeleteConvertedQuote: "Cannot delete an already invoiced quote.",
   },
   auth: {
+    privacyConsent: "By creating an account you accept the",
+    privacyInfo: "How we handle your data:",
+    privacyLink: "privacy policy",
     points: [
       "Invoices, quotes and series with PDF",
       "Expenses read from PDFs and receipts",

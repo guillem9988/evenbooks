@@ -2,6 +2,7 @@ import type { Dict } from "./types";
 
 export const ca: Dict = {
   common: {
+    privacy: "Política de privacitat",
     cancel: "Cancel·la",
     wait: "Un moment…",
     retry: "Torna-ho a provar",
@@ -154,6 +155,9 @@ export const ca: Dict = {
     cannotDeleteConvertedQuote: "No es pot eliminar un pressupost ja facturat.",
   },
   auth: {
+    privacyConsent: "En crear el compte acceptes la",
+    privacyInfo: "Com tractem les teves dades:",
+    privacyLink: "política de privacitat",
     points: [
       "Factures, pressupostos i sèries amb PDF",
       "Despeses llegides dels PDF i tiquets",
