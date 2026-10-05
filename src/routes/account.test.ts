@@ -49,6 +49,25 @@ describe("password reset", () => {
   });
 });
 
+describe("POST /auth/change-password", () => {
+  it("needs the current password and signs out the other sessions, not this one", async () => {
+    const session = await openSession(app, "change");
+    const email = await emailOf(session.cookie);
+    const second = await app.inject({ method: "POST", url: "/auth/login", payload: { email, password: "correct-horse" } });
+    const secondCookie = `mi_session=${second.cookies.find((c) => c.name === "mi_session")?.value ?? ""}`;
+    const change = withSession(app, session.cookie);
+
+    expect((await app.inject({ method: "POST", url: "/auth/change-password", payload: { currentPassword: "correct-horse", newPassword: "x-new-password" } })).statusCode).toBe(401);
+    expect((await change({ method: "POST", url: "/auth/change-password", payload: { currentPassword: "wrong-one", newPassword: "x-new-password" } })).statusCode).toBe(403);
+    expect((await change({ method: "POST", url: "/auth/change-password", payload: { currentPassword: "correct-horse", newPassword: "short" } })).statusCode).toBe(400);
+    expect((await change({ method: "POST", url: "/auth/change-password", payload: { currentPassword: "correct-horse", newPassword: "x-new-password" } })).statusCode).toBe(200);
+
+    expect((await change({ method: "GET", url: "/auth/session" })).statusCode).toBe(200);
+    expect((await withSession(app, secondCookie)({ method: "GET", url: "/auth/session" })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/auth/login", payload: { email, password: "x-new-password" } })).statusCode).toBe(200);
+  });
+});
+
 describe("DELETE /auth/account", () => {
   it("needs the password, deletes organizations the person owns alone, and keeps shared ones", async () => {
     const owner = await openSession(app, "erase");

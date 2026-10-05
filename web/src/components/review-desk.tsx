@@ -35,6 +35,7 @@ import {
   Field,
   FormDialog,
   LoadingRows,
+  MoreMenu,
   PageHeader,
   Section,
   Segmented,
@@ -106,6 +107,13 @@ interface ReviewPayload {
   ignored?: BankLine[];
   stats?: StatsPayload;
 }
+
+const PROGRESS_SEGMENTS = [
+  { key: "matched", label: "bank.statsMatched", className: "bg-emerald-500" },
+  { key: "ignored", label: "bank.statsIgnored", className: "bg-sky-400" },
+  { key: "suggestions", label: "bank.statsSuggestions", className: "bg-amber-400" },
+  { key: "unmatched", label: "bank.statsUnmatched", className: "bg-slate-300 dark:bg-slate-600" },
+] as const;
 
 interface CandidateInvoice extends InvoiceLine {
   exactAmount: boolean;
@@ -423,26 +431,24 @@ export function ReviewDesk() {
         description={t("bank.description")}
         actions={
           <>
-            <Button variant="outline" onClick={() => setManagingStatements(true)}>
-              <LandmarkIcon /> {t("bank.statements")}
-            </Button>
-            <Button variant="outline" onClick={() => setImporting(true)}>
+            <Button variant="outline" className="hidden sm:inline-flex" onClick={() => setImporting(true)}>
               <FileSpreadsheetIcon /> {t("bank.importStatement")}
             </Button>
-            <Button variant="outline" onClick={() => setUploading(true)}>
-              <UploadIcon /> {t("bank.uploadInvoices")}
-            </Button>
-            <Button
-              disabled={busy !== null || aiAnalyzing}
-              onClick={handleAiAnalyze}
-              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-sm"
-            >
-              <SparklesIcon className={aiAnalyzing ? "animate-spin" : ""} />
+            <Button variant="outline" className="hidden sm:inline-flex" disabled={busy !== null || aiAnalyzing} onClick={handleAiAnalyze}>
+              <SparklesIcon className={aiAnalyzing ? "animate-spin text-primary" : "text-primary"} />
               {aiAnalyzing ? t("bank.aiAnalyzing") : t("bank.aiAnalyze")}
             </Button>
             <Button disabled={busy !== null} onClick={reconcile}>
               {busy === "reconcile" ? t("bank.reconciling") : t("bank.reconcile")}
             </Button>
+            <MoreMenu
+              items={[
+                { label: t("bank.importStatement"), icon: FileSpreadsheetIcon, onClick: () => setImporting(true), mobileOnly: true },
+                { label: t("bank.aiAnalyze"), icon: SparklesIcon, onClick: handleAiAnalyze, disabled: busy !== null || aiAnalyzing, mobileOnly: true },
+                { label: t("bank.statements"), icon: LandmarkIcon, onClick: () => setManagingStatements(true) },
+                { label: t("bank.uploadInvoices"), icon: UploadIcon, onClick: () => setUploading(true) },
+              ]}
+            />
           </>
         }
       />
@@ -590,29 +596,33 @@ export function ReviewDesk() {
         </Card>
       )}
 
-      {/* KPI Stats Overview */}
+      {/* Reconciliation progress: one bar split by state, with the counts as its legend. */}
       {stats !== undefined && stats.total > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Card className="p-3">
-            <p className="text-xs text-muted-foreground uppercase">{t("bank.statsTotal")}</p>
-            <p className="text-2xl font-bold">{stats.total}</p>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground uppercase">{t("bank.statsMatched")}</p>
-              <StatusBadge tone="success">{stats.completionPercent}%</StatusBadge>
+        <Card size="sm">
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm font-medium text-muted-foreground">{t("bank.progressTitle")}</p>
+              <p className="text-sm text-muted-foreground">
+                <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">{stats.completionPercent}%</span>{" "}
+                {t("bank.progressOf", { total: stats.total })}
+              </p>
             </div>
-            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{stats.matched}</p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-xs text-muted-foreground uppercase">{t("bank.statsSuggestions")}</p>
-            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{stats.suggestions}</p>
-          </Card>
-          <Card className="p-3">
-            <p className="text-xs text-muted-foreground uppercase">{t("bank.statsUnmatched")}</p>
-            <p className="text-2xl font-bold text-slate-700 dark:text-slate-300">{stats.unmatched}</p>
-          </Card>
-        </div>
+            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted" role="img" aria-label={t("bank.progressAria", { percent: stats.completionPercent })}>
+              {PROGRESS_SEGMENTS.map(({ key, className }) =>
+                stats[key] > 0 ? <span key={key} className={className} style={{ width: `${(stats[key] / stats.total) * 100}%` }} /> : null,
+              )}
+            </div>
+            <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+              {PROGRESS_SEGMENTS.map(({ key, label, className }) => (
+                <li key={key} className="flex items-center gap-1.5">
+                  <span className={`size-2.5 rounded-full ${className}`} aria-hidden />
+                  <span className="text-muted-foreground">{t(label)}</span>
+                  <span className="font-medium tabular-nums">{stats[key]}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       <Section
@@ -762,6 +772,7 @@ export function ReviewDesk() {
             className="sm:mt-6"
             disabled={rangeInvalid}
             render={rangeInvalid ? undefined : <a href={zipUrl} />}
+            nativeButton={rangeInvalid}
           >
             <DownloadIcon /> {t("bank.downloadZip")}
           </Button>

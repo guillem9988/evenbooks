@@ -35,6 +35,7 @@ const API_KEYS: Record<string, keyof Dict["api"]> = {
   "Invalid or expired verification link": "invalidVerification",
   "Invalid or expired reset link": "invalidReset",
   "Account deletion not confirmed": "deleteNotConfirmed",
+  "Current password is incorrect": "wrongCurrentPassword",
 };
 
 type Params = Record<string, string | number>;

@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 
 interface SessionUser {
   displayName: string;
+  email?: string;
   avatarUrl?: string | null;
   emailVerified?: boolean;
   hasPassword?: boolean;
@@ -16,6 +17,7 @@ interface OrganizationState {
   organizationId: string;
   organizationName: string;
   displayName: string;
+  email: string;
   avatarUrl: string | null;
   /** False until the person confirms their address; AI reading and sending emails wait for it. */
   emailVerified: boolean;
@@ -33,6 +35,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [organizationId, setOrganizationId] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [emailVerified, setEmailVerified] = useState(true);
   const [hasPassword, setHasPassword] = useState(true);
@@ -42,6 +45,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       const session = await api<SessionUser>("/auth/session");
       const organization = session.organizations[0];
       setDisplayName(session.displayName);
+      setEmail(session.email ?? "");
       setAvatarUrl(session.avatarUrl ?? null);
       // Older APIs don't report it; treat that as verified so nothing gets blocked in the UI.
       setEmailVerified(session.emailVerified ?? true);
@@ -51,6 +55,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       return true;
     } catch {
       setDisplayName("");
+      setEmail("");
       setAvatarUrl(null);
       setOrganizationId("");
       setOrganizationName("");
@@ -71,13 +76,14 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   const clear = useCallback(() => {
     setDisplayName("");
+    setEmail("");
     setAvatarUrl(null);
     setOrganizationId("");
     setOrganizationName("");
   }, []);
 
   return (
-    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, displayName, avatarUrl, emailVerified, hasPassword, select, refresh, clear }}>
+    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, displayName, email, avatarUrl, emailVerified, hasPassword, select, refresh, clear }}>
       {children}
     </OrganizationContext.Provider>
   );

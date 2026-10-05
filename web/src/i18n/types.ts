@@ -12,6 +12,10 @@ export const STORAGE_KEY = "matchinvoice-locale";
 
 export type Dict = {
   common: {
+    edit: string;
+    save: string;
+    amounts: string;
+    more: string;
     privacy: string;
     cancel: string;
     wait: string;
@@ -107,6 +111,21 @@ export type Dict = {
     deleteFailed: string;
     typeEmail: string;
   };
+  account: {
+    title: string;
+    description: string;
+    emailStatus: string;
+    verified: string;
+    unverified: string;
+    signIn: string;
+    signInPassword: string;
+    signInGoogle: string;
+    changePassword: string;
+    setPassword: string;
+    changeDescription: string;
+    currentPassword: string;
+    changed: string;
+  };
   brand: {
     tagline: string;
   };
@@ -165,6 +184,7 @@ export type Dict = {
   };
   api: {
     invalidReset: string;
+    wrongCurrentPassword: string;
     deleteNotConfirmed: string;
     emailNotVerified: string;
     invalidVerification: string;
@@ -516,6 +536,8 @@ export type Dict = {
     vatSupportedHint: string;
     toReview: string;
     toReviewHint: string;
+    uncategorizedCallout: string;
+    uncategorizedCalloutHint: string;
     autoCategorize: string;
     autoCategorizeDone: string;
     autoCategorizeNone: string;
@@ -661,6 +683,9 @@ export type Dict = {
     assignSuccess: string;
     assignFailed: string;
     noCandidates: string;
+    progressTitle: string;
+    progressOf: string;
+    progressAria: string;
     statsTotal: string;
     statsMatched: string;
     statsSuggestions: string;
@@ -810,6 +835,11 @@ export type Dict = {
     removeFile: string;
   };
   settings: {
+    tabAi: string;
+    tabAccount: string;
+    tabAdvanced: string;
+    showOtherProviders: string;
+    hideOtherProviders: string;
     title: string;
     description: string;
     loadFailed: string;
@@ -819,6 +849,8 @@ export type Dict = {
     testFailed: string;
     modeTitle: string;
     modeDescription: string;
+    modeSystem: string;
+    modeSystemHint: string;
     modeAuto: string;
     modeAutoHint: string;
     modeGemini: string;
@@ -833,8 +865,6 @@ export type Dict = {
     modeDeepSeekHint: string;
     modeLocal: string;
     modeLocalHint: string;
-    modeSystem: string;
-    modeSystemHint: string;
     geminiTitle: string;
     geminiDescription: string;
     geminiKeyLabel: string;

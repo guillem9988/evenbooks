@@ -1,7 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 import type { CookieConfig } from "../config.js";
-import { checkPassword, LOCAL_COOKIE, SESSION_COOKIE, sessionCookieAttributes, userIdFromRequest } from "../auth/session.js";
+import {
+  checkPassword,
+  hashPassword,
+  LOCAL_COOKIE,
+  readPassword,
+  SESSION_COOKIE,
+  sessionCookieAttributes,
+  userIdFromRequest,
+} from "../auth/session.js";
 
 /**
  * DELETE /auth/account: the person deletes their own account (GDPR erasure). Organizations they are
@@ -14,6 +22,36 @@ export function registerAccountRoutes(
   deleteStoredFile: (key: string) => Promise<void>,
   cookie: CookieConfig = LOCAL_COOKIE,
 ): void {
+  /**
+   * POST /auth/change-password: needs the current password. Every other session of the account is
+   * signed out, so a stolen session stops working once its owner changes the password.
+   */
+  app.post("/auth/change-password", { config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async (request, reply) => {
+    const userId = await userIdFromRequest(prisma, request);
+    if (userId === null) {
+      return reply.code(401).send({ error: "Login required" });
+    }
+    const body = (request.body as { currentPassword?: unknown; newPassword?: unknown } | undefined) ?? {};
+    const newPassword = readPassword(body.newPassword);
+    if (newPassword instanceof Error) {
+      return reply.code(400).send({ error: newPassword.message });
+    }
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+    if (user === null) {
+      return reply.code(401).send({ error: "Login required" });
+    }
+    // Google-only accounts set a first password through the emailed reset link instead.
+    if (!user.passwordHash || typeof body.currentPassword !== "string" || !(await checkPassword(body.currentPassword, user.passwordHash))) {
+      return reply.code(403).send({ error: "Current password is incorrect" });
+    }
+    const currentToken = request.cookies[SESSION_COOKIE] ?? "";
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(newPassword) } }),
+      prisma.session.deleteMany({ where: { userId, token: { not: currentToken } } }),
+    ]);
+    return reply.send({ ok: true });
+  });
+
   app.delete("/auth/account", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => {
     const userId = await userIdFromRequest(prisma, request);
     if (userId === null) {

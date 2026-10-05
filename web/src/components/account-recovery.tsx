@@ -2,14 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2Icon, KeyRoundIcon, Trash2Icon } from "lucide-react";
+import { CheckCircle2Icon, KeyRoundIcon, MailWarningIcon, Trash2Icon, UserRoundIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/logo";
 import { useOrganization } from "@/components/organization";
-import { ErrorBanner, Field, FormDialog, messageOf, notifyError } from "@/components/ui-kit";
+import { ErrorBanner, Field, FormDialog, StatusBadge, messageOf, notifyError, notifySuccess } from "@/components/ui-kit";
 import { useT } from "@/i18n";
 import { api } from "@/lib/api";
 
@@ -133,6 +133,132 @@ export function ResetPasswordScreen() {
         )}
       </div>
     </main>
+  );
+}
+
+/** Settings card with who is signed in, and changing the password without leaving the app. */
+export function AccountCard() {
+  const t = useT();
+  const { displayName, email, avatarUrl, emailVerified, hasPassword, organizationName } = useOrganization();
+  const [changing, setChanging] = useState(false);
+  const [settingFirst, setSettingFirst] = useState(false);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [repeat, setRepeat] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const initial = (displayName || email || "?").trim().charAt(0).toUpperCase();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <UserRoundIcon className="size-4 text-primary" aria-hidden />
+          {t("account.title")}
+        </CardTitle>
+        <CardDescription>{t("account.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        <div className="flex items-center gap-3">
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatarUrl} alt="" className="size-12 rounded-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <span className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary" aria-hidden>
+              {initial}
+            </span>
+          )}
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">{displayName}</span>
+            <span className="truncate text-sm text-muted-foreground">{email}</span>
+          </div>
+        </div>
+        <dl className="grid gap-3 text-sm sm:grid-cols-3">
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs text-muted-foreground">{t("account.emailStatus")}</dt>
+            <dd>
+              {emailVerified ? (
+                <StatusBadge tone="success">{t("account.verified")}</StatusBadge>
+              ) : (
+                <StatusBadge tone="warning">
+                  <MailWarningIcon className="size-3" aria-hidden /> {t("account.unverified")}
+                </StatusBadge>
+              )}
+            </dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs text-muted-foreground">{t("account.signIn")}</dt>
+            <dd>{hasPassword ? t("account.signInPassword") : t("account.signInGoogle")}</dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs text-muted-foreground">{t("common.organization")}</dt>
+            <dd className="truncate">{organizationName}</dd>
+          </div>
+        </dl>
+        <div>
+          {hasPassword ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setCurrent("");
+                setNext("");
+                setRepeat("");
+                setError(null);
+                setChanging(true);
+              }}
+            >
+              <KeyRoundIcon /> {t("account.changePassword")}
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={() => setSettingFirst(true)}>
+              <KeyRoundIcon /> {t("account.setPassword")}
+            </Button>
+          )}
+        </div>
+      </CardContent>
+      <FormDialog
+        open={changing}
+        onOpenChange={setChanging}
+        title={t("account.changePassword")}
+        description={t("account.changeDescription")}
+        submitLabel={t("recovery.save")}
+        busy={busy}
+        onSubmit={async () => {
+          if (next.length < 8) {
+            setError(t("validation.passwordMin"));
+            return;
+          }
+          if (next !== repeat) {
+            setError(t("recovery.mismatch"));
+            return;
+          }
+          setBusy(true);
+          setError(null);
+          try {
+            await api("/auth/change-password", { method: "POST", body: JSON.stringify({ currentPassword: current, newPassword: next }) });
+            setChanging(false);
+            notifySuccess(t("account.changed"));
+          } catch (cause) {
+            setError(messageOf(cause, t("recovery.resetFailed")));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Field id="current-password" label={t("account.currentPassword")}>
+          <Input id="current-password" type="password" autoComplete="current-password" value={current} onChange={(event) => setCurrent(event.target.value)} />
+        </Field>
+        <Field id="new-password" label={t("recovery.newPassword")} hint={t("validation.passwordMin")}>
+          <Input id="new-password" type="password" autoComplete="new-password" value={next} onChange={(event) => setNext(event.target.value)} />
+        </Field>
+        <Field id="repeat-password" label={t("recovery.repeatPassword")}>
+          <Input id="repeat-password" type="password" autoComplete="new-password" value={repeat} onChange={(event) => setRepeat(event.target.value)} />
+        </Field>
+        <ErrorBanner message={error} />
+      </FormDialog>
+      <ForgotPasswordDialog open={settingFirst} onOpenChange={setSettingFirst} initialEmail={email} />
+    </Card>
   );
 }
 

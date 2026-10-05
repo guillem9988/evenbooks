@@ -1,11 +1,12 @@
 "use client";
 
 import { Children, cloneElement, isValidElement, useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangleIcon, InboxIcon, RotateCwIcon } from "lucide-react";
+import { AlertTriangleIcon, InboxIcon, MoreHorizontalIcon, RotateCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,13 +24,43 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div className="flex min-w-0 flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
         {description ? <p className="max-w-2xl text-sm text-muted-foreground">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2 md:justify-end">{actions}</div> : null}
     </header>
+  );
+}
+
+export interface MoreMenuItem {
+  label: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  onClick?: () => void;
+  href?: string;
+  disabled?: boolean;
+  /** Only listed on phones, where the matching header button is hidden to keep one row. */
+  mobileOnly?: boolean;
+}
+
+/** Secondary page actions behind a "…" button, so a header keeps one or two visible buttons. */
+export function MoreMenu({ items, label }: { items: MoreMenuItem[]; label?: string }) {
+  const t = useT();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button type="button" variant="outline" size="icon" aria-label={label ?? t("common.more")} title={label ?? t("common.more")} />}>
+        <MoreHorizontalIcon />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-52">
+        {items.map(({ label: text, icon: Icon, onClick, href, disabled, mobileOnly }) => (
+          <DropdownMenuItem key={text} disabled={disabled} onClick={onClick} render={href ? <a href={href} /> : undefined} className={mobileOnly ? "sm:hidden" : undefined}>
+            {Icon ? <Icon /> : null}
+            {text}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
