@@ -266,8 +266,22 @@ model User {
 
   memberships Membership[]
   sessions    Session[]
+  usageEvents UsageEvent[]
 
   @@map("users")
+}
+
+/// One row per metered action (an AI-read document, a sent email), for per-user daily limits.
+model UsageEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  kind      String   @db.VarChar(40)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, createdAt], map: "idx_usage_events_user_kind_time")
+  @@map("usage_events")
 }
 
 model Membership {

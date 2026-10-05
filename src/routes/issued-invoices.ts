@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { IssuedInvoiceStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
 import { renderIssuedInvoicePdf } from "../billing/invoice-pdf.js";
 import { sendEmail } from "../lib/mailer.js";
+import { consumeQuota } from "../lib/quota.js";
 import { formatEuroDisplay } from "../lib/money.js";
 import { cents, day, findOrganization, parseDay, readUuid } from "./org-params.js";
 import { readLines } from "./document-lines.js";
@@ -13,7 +14,7 @@ const issuedInclude = {
   rectifies: { select: { seriesNumber: true } },
 } as const;
 
-export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: PrismaClient): void {
+export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: PrismaClient, emailsPerDay = 20): void {
   app.get("/organizations/:organizationId/issued-invoices", async (request, reply) => {
     const organizationId = readUuid((request.params as { organizationId?: string }).organizationId, "organizationId");
     if (organizationId instanceof Error) {
@@ -170,6 +171,9 @@ export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: Prisma
 
     if (!targetEmail || !targetEmail.includes("@")) {
       return reply.code(400).send({ error: "El client no té cap adreça de correu electrònic vàlida." });
+    }
+    if (request.userId !== undefined && !(await consumeQuota(prisma, request.userId, "email", emailsPerDay))) {
+      return reply.code(429).send({ error: "Daily email limit reached" });
     }
 
     const pdf = await renderIssuedInvoicePdf({

@@ -115,6 +115,9 @@ export const ca: Dict = {
     dateAfter: "Ha de ser després de la data d’inici.",
   },
   api: {
+    aiQuota: "Has arribat al límit diari de lectures amb IA. Torna-ho a provar demà o configura la teva pròpia clau d’IA a Configuració.",
+    emailQuota: "Has arribat al límit diari de correus enviats. Torna-ho a provar demà.",
+    orgLimit: "Has arribat al màxim d’organitzacions per compte.",
     offline: "Sense connexió. Mira la xarxa i torna-ho a provar.",
     failed: "Això ha fallat",
     invalidCredentials: "Correu o contrasenya incorrectes.",

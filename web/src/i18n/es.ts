@@ -115,6 +115,9 @@ export const es: Dict = {
     dateAfter: "Tiene que ser después de la fecha de inicio.",
   },
   api: {
+    aiQuota: "Has llegado al límite diario de lecturas con IA. Vuelve a intentarlo mañana o configura tu propia clave de IA en Configuración.",
+    emailQuota: "Has llegado al límite diario de correos enviados. Vuelve a intentarlo mañana.",
+    orgLimit: "Has llegado al máximo de organizaciones por cuenta.",
     offline: "Sin conexión. Mira la red y prueba otra vez.",
     failed: "Ha fallado",
     invalidCredentials: "Correo o contraseña incorrectos.",

@@ -82,10 +82,10 @@ export async function buildServer(config: AppConfig) {
     checkRedis: () => redis.ping(),
     checkMinio: () => checkStorage(storage, config.s3.bucket),
   });
-  registerOrganizationRoutes(app, database.prisma);
+  registerOrganizationRoutes(app, database.prisma, config.limits.organizationsPerUser);
   registerContactRoutes(app, database.prisma);
   registerCatalogRoutes(app, database.prisma);
-  registerIssuedInvoiceRoutes(app, database.prisma);
+  registerIssuedInvoiceRoutes(app, database.prisma, config.limits.emailsPerDay);
   registerQuoteRoutes(app, database.prisma);
   registerRecurringRoutes(app, database.prisma);
   registerExpenseRoutes(app, database.prisma);
@@ -93,7 +93,7 @@ export async function buildServer(config: AppConfig) {
   registerReconcileRoutes(app, database.prisma);
   registerReconciliationRoutes(app, database.prisma);
   registerStatementRoutes(app, database.prisma);
-  registerInvoiceRoutes(app, database.prisma, storage, config.s3.bucket, invoiceQueue);
+  registerInvoiceRoutes(app, database.prisma, storage, config.s3.bucket, invoiceQueue, config.limits);
   registerSettingsRoutes(app, database.prisma, config.extractor);
   registerReportRoutes(app, database.prisma, {
     get: (key) => getObject(storage, config.s3.bucket, key),

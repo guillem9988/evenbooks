@@ -125,6 +125,9 @@ export type Dict = {
     dateAfter: string;
   };
   api: {
+    aiQuota: string;
+    emailQuota: string;
+    orgLimit: string;
     offline: string;
     failed: string;
     invalidCredentials: string;

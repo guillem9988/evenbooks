@@ -28,6 +28,9 @@ const API_KEYS: Record<string, keyof Dict["api"]> = {
   "Cannot delete an invoice that has been rectified": "cannotDeleteRectifiedInvoice",
   "Cannot edit a converted quote": "cannotEditConvertedQuote",
   "Cannot delete a converted quote": "cannotDeleteConvertedQuote",
+  "Daily AI document limit reached": "aiQuota",
+  "Daily email limit reached": "emailQuota",
+  "Organization limit reached": "orgLimit",
 };
 
 type Params = Record<string, string | number>;
