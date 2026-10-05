@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 
-export function registerOrganizationRoutes(app: FastifyInstance, prisma: PrismaClient): void {
+export function registerOrganizationRoutes(app: FastifyInstance, prisma: PrismaClient, organizationsPerUser = 3): void {
   app.post("/organizations", async (request, reply) => {
     const body = request.body as { legalName?: unknown; taxId?: unknown };
     if (typeof body?.legalName !== "string" || body.legalName.trim() === "") {
@@ -13,6 +13,9 @@ export function registerOrganizationRoutes(app: FastifyInstance, prisma: PrismaC
     const userId = request.userId;
     if (userId === undefined) {
       return reply.code(401).send({ error: "Login required" });
+    }
+    if ((await prisma.membership.count({ where: { userId } })) >= organizationsPerUser) {
+      return reply.code(403).send({ error: "Organization limit reached" });
     }
     const organization = await prisma.organization.create({
       data: {

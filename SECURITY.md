@@ -19,7 +19,8 @@ self-hosted instances running with configuration that differs from the documente
 
 ## Hardening checklist for self-hosters
 
-- Keep `ALLOW_PUBLIC_REGISTRATION=false` (the production default) or use `REGISTRATION_INVITE_CODE`.
+- Sign-up is closed by default in production. If you open it (`ALLOW_PUBLIC_REGISTRATION=true`), keep the per-user
+  limits (`DAILY_AI_DOCUMENTS_PER_USER`, `DAILY_EMAILS_PER_USER`, `MAX_ORGANIZATIONS_PER_USER`) at sensible values.
 - Set `COOKIE_SECURE=true` in production. Use `COOKIE_SAME_SITE=lax` when the web app reaches the
   API through its own `/backend` proxy; `none` is only needed when the browser calls the API cross-site.
 - Set `GOOGLE_CLIENT_ID` before enabling Google sign-in; the API rejects Google tokens without it.

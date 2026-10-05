@@ -3,11 +3,14 @@ import type { Queue } from "bullmq";
 import type { FastifyInstance } from "fastify";
 import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import type { S3Client } from "@aws-sdk/client-s3";
+import type { UsageLimits } from "../config.js";
+import { consumeQuota } from "../lib/quota.js";
 import { deleteObject, getObject, putObject } from "../lib/storage.js";
 
 const ORGANIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED = new Set(["application/pdf", "image/png", "image/jpeg"]);
+const DEFAULT_LIMITS: UsageLimits = { aiDocumentsPerDay: 30, emailsPerDay: 20, organizationsPerUser: 3 };
 
 export function registerInvoiceRoutes(
   app: FastifyInstance,
@@ -15,7 +18,19 @@ export function registerInvoiceRoutes(
   storage: S3Client,
   bucket: string,
   queue: Queue,
+  limits: UsageLimits = DEFAULT_LIMITS,
 ): void {
+  /** Reads with the server's AI keys count against the user's daily limit; an organization's own keys don't. */
+  const allowAiDocuments = async (userId: string | undefined, organizationId: string, amount: number) => {
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { geminiApiKey: true, openaiApiKey: true, anthropicApiKey: true, deepseekApiKey: true, documentAiCredentialsJson: true },
+    });
+    const ownKeys = Boolean(org?.geminiApiKey || org?.openaiApiKey || org?.anthropicApiKey || org?.deepseekApiKey || org?.documentAiCredentialsJson);
+    if (ownKeys || userId === undefined) return true;
+    return consumeQuota(prisma, userId, "ai_document", limits.aiDocumentsPerDay, amount);
+  };
+
   app.post("/organizations/:organizationId/invoices", async (request, reply) => {
     const { organizationId } = request.params as { organizationId: string };
     if (!ORGANIZATION_ID.test(organizationId)) {
@@ -44,6 +59,9 @@ export function registerInvoiceRoutes(
     }
     if (uploads.length === 0) {
       return reply.code(400).send({ error: "At least one PDF, PNG, or JPEG invoice is required" });
+    }
+    if (!(await allowAiDocuments(request.userId, organizationId, uploads.length))) {
+      return reply.code(429).send({ error: "Daily AI document limit reached" });
     }
 
     const invoiceIds: string[] = [];
@@ -84,6 +102,9 @@ export function registerInvoiceRoutes(
     });
     if (invoice === null) {
       return reply.code(404).send({ error: "Invoice not found" });
+    }
+    if (!(await allowAiDocuments(request.userId, organizationId, 1))) {
+      return reply.code(429).send({ error: "Daily AI document limit reached" });
     }
 
     await prisma.invoice.update({

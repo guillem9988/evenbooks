@@ -115,6 +115,9 @@ export const en: Dict = {
     dateAfter: "Needs to be after the start date.",
   },
   api: {
+    aiQuota: "You have reached the daily AI reading limit. Try again tomorrow or add your own AI key in Settings.",
+    emailQuota: "You have reached the daily email limit. Try again tomorrow.",
+    orgLimit: "You have reached the maximum number of organizations per account.",
     offline: "No connection. Check the network and try again.",
     failed: "That failed",
     invalidCredentials: "Wrong email or password.",
