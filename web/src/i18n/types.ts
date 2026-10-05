@@ -81,6 +81,32 @@ export type Dict = {
     failedHint: string;
     goHome: string;
   };
+  recovery: {
+    forgotLink: string;
+    forgotTitle: string;
+    forgotDescription: string;
+    sendLink: string;
+    sentNotice: string;
+    sendFailed: string;
+    close: string;
+    resetTitle: string;
+    newPassword: string;
+    repeatPassword: string;
+    mismatch: string;
+    save: string;
+    resetFailed: string;
+    resetDone: string;
+    resetDoneHint: string;
+    goToLogin: string;
+    deleteTitle: string;
+    deleteDescription: string;
+    deleteButton: string;
+    deleteConfirmTitle: string;
+    deleteConfirmDescription: string;
+    deleteForever: string;
+    deleteFailed: string;
+    typeEmail: string;
+  };
   brand: {
     tagline: string;
   };
@@ -138,6 +164,8 @@ export type Dict = {
     dateAfter: string;
   };
   api: {
+    invalidReset: string;
+    deleteNotConfirmed: string;
     emailNotVerified: string;
     invalidVerification: string;
     aiQuota: string;

@@ -67,7 +67,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   }, [organizationId]);
 
   // Pages that must work whether or not the person is signed in: the emailed verification link and the privacy policy.
-  if (pathname === "/verifica" || pathname === "/privacitat") {
+  if (pathname === "/verifica" || pathname === "/privacitat" || pathname === "/restableix") {
     return <>{children}</>;
   }
 

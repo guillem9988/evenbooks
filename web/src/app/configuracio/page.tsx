@@ -1,5 +1,6 @@
 "use client";
 
+import { DeleteAccountCard } from "@/components/account-recovery";
 import { useCallback, useEffect, useState } from "react";
 import {
   BotIcon,
@@ -1316,6 +1317,8 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <DeleteAccountCard />
 
           {/* Info Card */}
           <div className="flex items-start gap-3 rounded-xl border border-muted-foreground/20 bg-muted/30 p-4 text-xs text-muted-foreground">

@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { InvoiceStatus, MatchStatus, Prisma } from "../../generated/prisma/client.js";
 import { loadConfig } from "../config.js";
 import { createDatabase } from "../lib/prisma.js";
-import { buildAccountantExport } from "./accountant-export.js";
+import { buildAccountantExport, safeText } from "./accountant-export.js";
 
 const database = createDatabase(loadConfig().databaseUrl);
 const objects = new Map<string, Buffer>();
@@ -105,4 +105,14 @@ describe("buildAccountantExport", () => {
 
     await database.prisma.organization.delete({ where: { id: organization.id } });
   }, 25000);
+});
+
+describe("safeText", () => {
+  it("keeps spreadsheet formulas from untrusted text inert", () => {
+    expect(safeText("=HYPERLINK(\"http://evil\",\"x\")")).toBe("'=HYPERLINK(\"http://evil\",\"x\")");
+    expect(safeText("+34 600")).toBe("'+34 600");
+    expect(safeText("@SUM(A1)")).toBe("'@SUM(A1)");
+    expect(safeText("-cmd")).toBe("'-cmd");
+    expect(safeText("Acme SL")).toBe("Acme SL");
+  });
 });

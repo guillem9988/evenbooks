@@ -84,10 +84,10 @@ export async function buildAccountantExport(
         transaction.amountCents.toString(),
         formatCents(transaction.amountCents),
         transaction.currency,
-        transaction.rawDescription,
+        safeText(transaction.rawDescription),
         transaction.matchStatus,
-        vendorName,
-        invoiceNumber,
+        safeText(vendorName),
+        safeText(invoiceNumber),
         invoiceDate,
         baseAmountCents,
         taxAmountCents,
@@ -191,6 +191,14 @@ function sanitizeVendor(vendor: string): string {
 function extensionOf(filename: string): string {
   const match = /\.([A-Za-z0-9]{1,8})$/.exec(filename);
   return match === null ? "" : `.${match[1]?.toLowerCase()}`;
+}
+
+/**
+ * Text that came from bank files or scanned invoices must not run as a spreadsheet formula when the
+ * accountant opens the CSV (=HYPERLINK(...), +cmd, @SUM...). A leading apostrophe keeps it as text.
+ */
+export function safeText(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }
 
 function csvCell(value: string): string {

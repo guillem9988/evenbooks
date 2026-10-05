@@ -33,6 +33,8 @@ const API_KEYS: Record<string, keyof Dict["api"]> = {
   "Organization limit reached": "orgLimit",
   "Email not verified": "emailNotVerified",
   "Invalid or expired verification link": "invalidVerification",
+  "Invalid or expired reset link": "invalidReset",
+  "Account deletion not confirmed": "deleteNotConfirmed",
 };
 
 type Params = Record<string, string | number>;
