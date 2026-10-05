@@ -268,6 +268,9 @@ model User {
   /// SHA-256 of the pending verification token; the token itself is only ever in the email.
   emailVerificationTokenHash String?   @unique @map("email_verification_token_hash") @db.VarChar(64)
   emailVerificationExpiresAt DateTime? @map("email_verification_expires_at") @db.Timestamptz(6)
+  /// SHA-256 of a pending password-reset token (1 h); the token itself is only ever in the email.
+  passwordResetTokenHash     String?   @unique @map("password_reset_token_hash") @db.VarChar(64)
+  passwordResetExpiresAt     DateTime? @map("password_reset_expires_at") @db.Timestamptz(6)
 
   memberships Membership[]
   sessions    Session[]

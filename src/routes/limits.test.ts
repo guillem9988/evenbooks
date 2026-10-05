@@ -60,3 +60,17 @@ describe("per-user usage limits", () => {
     expect(second.json()).toEqual({ error: "Daily email limit reached" });
   });
 });
+
+describe("PDF bank statements", () => {
+  it("count against the daily AI limit when read with the server's key", async () => {
+    const boundary = "----statement";
+    const body = [`--${boundary}`, 'Content-Disposition: form-data; name="file"; filename="extracte.pdf"', "Content-Type: application/pdf", "", "%PDF-1.4", `--${boundary}--`, ""].join("\r\n");
+    const response = await inject({
+      method: "POST",
+      url: `/organizations/${session.organizationId}/statements`,
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+    expect(response.statusCode).toBe(429);
+  });
+});

@@ -8,8 +8,9 @@ import { loadConfig, type AppConfig } from "./config.js";
 import { createInvoiceProcessingQueue, INVOICE_PROCESSING_QUEUE } from "./lib/queue.js";
 import { checkPostgres, createDatabase } from "./lib/prisma.js";
 import { RedisClient } from "./lib/redis.js";
-import { checkStorage, createStorageClient, getObject } from "./lib/storage.js";
+import { checkStorage, createStorageClient, deleteObject, getObject } from "./lib/storage.js";
 import { registerOrganizationGuard } from "./auth/guard.js";
+import { registerAccountRoutes } from "./routes/account.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerCatalogRoutes } from "./routes/catalog.js";
 import { registerContactRoutes } from "./routes/contacts.js";
@@ -76,6 +77,7 @@ export async function buildServer(config: AppConfig) {
   });
 
   registerAuthRoutes(app, database.prisma, config.cookie, config.registration, config.googleOAuth, config.webOrigins, config.emailVerification);
+  registerAccountRoutes(app, database.prisma, (key) => deleteObject(storage, config.s3.bucket, key), config.cookie);
   registerOrganizationGuard(app, database.prisma);
   registerHealthRoutes(app, {
     checkPostgres: () => checkPostgres(database.prisma),
@@ -92,7 +94,7 @@ export async function buildServer(config: AppConfig) {
   registerDashboardRoutes(app, database.prisma);
   registerReconcileRoutes(app, database.prisma);
   registerReconciliationRoutes(app, database.prisma);
-  registerStatementRoutes(app, database.prisma);
+  registerStatementRoutes(app, database.prisma, config.limits.aiDocumentsPerDay);
   registerInvoiceRoutes(app, database.prisma, storage, config.s3.bucket, invoiceQueue, config.limits);
   registerSettingsRoutes(app, database.prisma, config.extractor);
   registerReportRoutes(app, database.prisma, {

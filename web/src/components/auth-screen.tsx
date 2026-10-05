@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { ForgotPasswordDialog } from "@/components/account-recovery";
 import { Logo } from "@/components/logo";
 import { useOrganization } from "@/components/organization";
 import { EMAIL, ErrorBanner, Field, Segmented, messageOf, notifySuccess } from "@/components/ui-kit";
@@ -52,6 +53,7 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
   const [registration, setRegistration] = useState<RegistrationInfo | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [forgotOpen, setForgotOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [taxId, setTaxId] = useState("");
@@ -378,6 +380,15 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </Field>
+              {mode === "login" ? (
+                <button
+                  type="button"
+                  onClick={() => setForgotOpen(true)}
+                  className="-mt-2 self-end text-xs font-medium text-primary underline-offset-4 hover:underline focus:outline-none focus-visible:underline"
+                >
+                  {t("recovery.forgotLink")}
+                </button>
+              ) : null}
               {mode === "register" ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field id="org-name" label={t("common.legalName")} error={errors.legalName}>
@@ -430,6 +441,8 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
                 {t("auth.privacyLink")}
               </a>
             </p>
+
+            <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} initialEmail={email} />
 
             {/* Navigation toggle link */}
             <div className="text-center text-xs text-muted-foreground pt-1">

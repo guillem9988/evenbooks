@@ -20,6 +20,7 @@ MatchInvoice is a complete, self-hostable SaaS solution tailored to Spanish and 
   - Each user or organization can configure their own **OpenAI API Key** (`sk-...`) or **Google Document AI** service account credentials directly in the web UI.
   - Choose between extraction modes: **Auto** (best quality fallback), **OpenAI**, **Google Document AI**, or **Local OCR only** (100% private, no third-party data transmission).
   - Configure a custom **API Server URL** to connect the web interface to self-hosted or local backend instances.
+- **👤 Accounts**: email or Google sign-in, email verification, password reset by email, and self-service account deletion (GDPR), with a privacy policy page.
 - **🌐 Multilingual**: Native support for **Catalan (Català)**, **Spanish (Español)**, and **English**.
 - **🔒 Integer Cents Precision**: All monetary values are handled in integer cents (`bigint` in Postgres), preventing floating-point arithmetic rounding errors.
 

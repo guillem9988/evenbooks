@@ -83,7 +83,7 @@ export const PRIVACY: Record<Locale, PrivacyContent> = {
       {
         title: "7. Quant de temps les guardem",
         paragraphs: [
-          "Mentre tinguis el compte actiu. Si demanes esborrar el compte, eliminarem les teves dades en un termini raonable, excepte les que la llei obligui a conservar. Recorda que la normativa fiscal pot obligar-te a tu a conservar les factures durant anys: descarrega-les abans d’esborrar el compte.",
+          "Mentre tinguis el compte actiu. Pots esborrar-lo tu mateix a Configuració → Esborra el compte, o demanar-ho al correu de contacte. Quan s’esborra el compte, eliminarem les teves dades en un termini raonable, excepte les que la llei obligui a conservar. Recorda que la normativa fiscal pot obligar-te a tu a conservar les factures durant anys: descarrega-les abans d’esborrar el compte.",
         ],
       },
       {
@@ -165,7 +165,7 @@ export const PRIVACY: Record<Locale, PrivacyContent> = {
       {
         title: "7. Cuánto tiempo los guardamos",
         paragraphs: [
-          "Mientras tengas la cuenta activa. Si pides borrar la cuenta, eliminaremos tus datos en un plazo razonable, salvo los que la ley obligue a conservar. Recuerda que la normativa fiscal puede obligarte a ti a conservar las facturas durante años: descárgalas antes de borrar la cuenta.",
+          "Mientras tengas la cuenta activa. Puedes borrarla tú mismo en Configuración → Borrar la cuenta, o pedirlo al correo de contacto. Cuando se borra la cuenta, eliminaremos tus datos en un plazo razonable, salvo los que la ley obligue a conservar. Recuerda que la normativa fiscal puede obligarte a ti a conservar las facturas durante años: descárgalas antes de borrar la cuenta.",
         ],
       },
       {
@@ -247,7 +247,7 @@ export const PRIVACY: Record<Locale, PrivacyContent> = {
       {
         title: "7. How long we keep it",
         paragraphs: [
-          "For as long as your account is active. If you ask us to delete your account, we will delete your data within a reasonable time, except what the law requires us to keep. Tax rules may require you to keep your invoices for years: download them before deleting your account.",
+          "For as long as your account is active. You can delete it yourself in Settings → Delete account, or ask at the contact address. When an account is deleted, we will delete your data within a reasonable time, except what the law requires us to keep. Tax rules may require you to keep your invoices for years: download them before deleting your account.",
         ],
       },
       {

@@ -8,7 +8,7 @@ import {
   type GoogleOAuthConfig,
   type RegistrationConfig,
 } from "../config.js";
-import { confirmVerificationToken, sendVerificationEmail } from "../auth/verification.js";
+import { confirmVerificationToken, resetPasswordWithToken, sendPasswordResetEmail, sendVerificationEmail } from "../auth/verification.js";
 import {
   checkPassword,
   hashPassword,
@@ -406,6 +406,36 @@ export function registerAuthRoutes(
     return reply.send({ ok: true });
   });
 
+  app.post("/auth/forgot-password", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => {
+    const email = readEmail((request.body as { email?: unknown } | undefined)?.email);
+    if (email instanceof Error) {
+      return reply.code(400).send({ error: email.message });
+    }
+    const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, displayName: true } });
+    if (user !== null) {
+      await sendPasswordResetEmail(prisma, user, verificationOrigin).catch((error: unknown) => {
+        request.log.warn({ err: error }, "could not send the password reset email");
+      });
+    }
+    // Same answer whether or not the address has an account, so this can't be used to probe for users.
+    return reply.send({ ok: true });
+  });
+
+  app.post("/auth/reset-password", { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
+    const body = (request.body as { token?: unknown; password?: unknown } | undefined) ?? {};
+    const password = readPassword(body.password);
+    if (password instanceof Error) {
+      return reply.code(400).send({ error: password.message });
+    }
+    if (typeof body.token !== "string" || body.token.length < 20 || body.token.length > 200) {
+      return reply.code(400).send({ error: "Invalid or expired reset link" });
+    }
+    if (!(await resetPasswordWithToken(prisma, body.token, await hashPassword(password)))) {
+      return reply.code(400).send({ error: "Invalid or expired reset link" });
+    }
+    return reply.send({ ok: true });
+  });
+
   app.post("/auth/resend-verification", { config: { rateLimit: { max: 3, timeWindow: "1 hour" } } }, async (request, reply) => {
     const userId = await userIdFromRequest(prisma, request);
     if (userId === null) {
@@ -444,6 +474,7 @@ function presentUser(user: {
   displayName: string;
   avatarUrl?: string | null;
   emailVerifiedAt?: Date | null;
+  passwordHash?: string | null;
   memberships: Array<{ organization: { id: string; legalName: string; taxId: string } }>;
 }) {
   return {
@@ -452,6 +483,7 @@ function presentUser(user: {
     displayName: user.displayName,
     avatarUrl: user.avatarUrl ?? null,
     emailVerified: user.emailVerifiedAt != null,
+    hasPassword: Boolean(user.passwordHash),
     organizations: user.memberships.map((membership) => ({
       id: membership.organization.id,
       legalName: membership.organization.legalName,

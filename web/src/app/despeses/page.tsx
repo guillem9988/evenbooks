@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   FileTextIcon,
   PencilIcon,
@@ -16,7 +16,7 @@ import {
   UploadIcon,
   XIcon,
 } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EditExpenseDialog, ManualExpenseDialog, type ExpenseItem } from "@/components/edit-expense-dialog";
@@ -27,6 +27,7 @@ import {
   EmptyState,
   ErrorBanner,
   KpiCard,
+  MoreMenu,
   NativeSelect,
   PageHeader,
   Segmented,
@@ -55,6 +56,7 @@ type Filter = "ALL" | "UNCATEGORIZED" | "PENDING" | "FAILED";
 export default function ExpensesPage() {
   const t = useT();
   const organizationId = useOrganizationId();
+  const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -180,23 +182,19 @@ export default function ExpensesPage() {
         description={t("expenses.description")}
         actions={
           <>
-            <Link href="/configuracio" className={buttonVariants({ variant: "outline" })}>
-              <SparklesIcon /> {t("expenses.configureAi")}
-            </Link>
-            <Button variant="outline" onClick={() => void reload()} disabled={loading}>
-              <RefreshCwIcon /> {t("expenses.refresh")}
-            </Button>
-            {uncategorized.length > 0 ? (
-              <Button variant="outline" onClick={() => void autoCategorize()} disabled={autoCategorizing} title={t("expenses.autoCategoryHint")}>
-                <WandSparklesIcon /> {autoCategorizing ? t("common.wait") : `${t("expenses.autoCategorize")} (${uncategorized.length})`}
-              </Button>
-            ) : null}
-            <Button variant="outline" onClick={() => setCreatingManual(true)}>
+            <Button variant="outline" className="hidden sm:inline-flex" onClick={() => setCreatingManual(true)}>
               <PlusIcon /> {t("expenses.newManual")}
             </Button>
             <Button onClick={() => setUploading(true)}>
               <UploadIcon /> {t("expenses.upload")}
             </Button>
+            <MoreMenu
+              items={[
+                { label: t("expenses.newManual"), icon: PlusIcon, onClick: () => setCreatingManual(true), mobileOnly: true },
+                { label: t("expenses.refresh"), icon: RefreshCwIcon, onClick: () => void reload(), disabled: loading },
+                { label: t("expenses.configureAi"), icon: SparklesIcon, onClick: () => router.push("/configuracio") },
+              ]}
+            />
           </>
         }
       />
@@ -248,6 +246,21 @@ export default function ExpensesPage() {
                   ["FAILED", t("expenses.unreadable"), failed.length],
                 ]}
               />
+
+              {uncategorized.length > 0 ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <p className="flex items-center gap-2">
+                    <WandSparklesIcon className="size-4 shrink-0 text-primary" aria-hidden />
+                    <span>
+                      <span className="font-medium">{t("expenses.uncategorizedCallout", { count: uncategorized.length })}</span>{" "}
+                      <span className="text-muted-foreground">{t("expenses.uncategorizedCalloutHint")}</span>
+                    </span>
+                  </p>
+                  <Button size="sm" onClick={() => void autoCategorize()} disabled={autoCategorizing} title={t("expenses.autoCategoryHint")} className="shrink-0">
+                    <WandSparklesIcon /> {autoCategorizing ? t("common.wait") : t("expenses.autoCategorize")}
+                  </Button>
+                </div>
+              ) : null}
 
               <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="relative flex-1">
