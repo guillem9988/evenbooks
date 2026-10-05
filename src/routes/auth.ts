@@ -4,9 +4,11 @@ import type { PrismaClient } from "../../generated/prisma/client.js";
 import {
   registrationStatus,
   type CookieConfig,
+  type EmailVerificationConfig,
   type GoogleOAuthConfig,
   type RegistrationConfig,
 } from "../config.js";
+import { confirmVerificationToken, sendVerificationEmail } from "../auth/verification.js";
 import {
   checkPassword,
   hashPassword,
@@ -88,12 +90,14 @@ async function findOrCreateGoogleUser(
   });
 
   if (user !== null) {
-    if (!user.googleId || !user.avatarUrl) {
+    // Google has verified this address, so signing in with it also verifies the account.
+    if (!user.googleId || !user.avatarUrl || user.emailVerifiedAt === null) {
       user = await prisma.user.update({
         where: { id: user.id },
         data: {
           googleId: user.googleId ?? verified.sub,
           avatarUrl: user.avatarUrl ?? verified.picture,
+          emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
         },
         include: { memberships: { include: { organization: true } } },
       });
@@ -116,6 +120,7 @@ async function findOrCreateGoogleUser(
       googleId: verified.sub,
       avatarUrl: verified.picture ? verified.picture.slice(0, 1024) : null,
       passwordHash: null,
+      emailVerifiedAt: new Date(),
       memberships: {
         create: {
           organization: {
@@ -149,7 +154,9 @@ export function registerAuthRoutes(
   registration: RegistrationConfig = { allowPublic: true, inviteCode: null },
   googleOAuth: GoogleOAuthConfig = { clientId: null, clientSecret: null },
   webOrigins: string[] = [],
+  emailVerification: EmailVerificationConfig = { required: false },
 ): void {
+  const verificationOrigin = webOrigins[0] ?? "http://127.0.0.1:43124";
   const safeRedirect = (target: unknown) => safeRedirectTarget(target, webOrigins);
   app.get("/auth/registration", async (_request, reply) => {
     return reply.send(registrationStatus(registration, googleOAuth));
@@ -198,6 +205,7 @@ export function registerAuthRoutes(
         email,
         passwordHash,
         displayName: body.displayName.trim().slice(0, 255),
+        emailVerifiedAt: emailVerification.required ? null : new Date(),
         memberships: {
           create: {
             organization: {
@@ -215,12 +223,19 @@ export function registerAuthRoutes(
     if (organization === undefined) {
       return reply.code(500).send({ error: "Organization was not created" });
     }
+    if (emailVerification.required) {
+      // A failed send must not fail the sign-up: the person can ask for the link again.
+      await sendVerificationEmail(prisma, user, verificationOrigin).catch((error: unknown) => {
+        request.log.warn({ err: error }, "could not send the verification email");
+      });
+    }
     await openSession(prisma, reply, user.id, cookie);
     return reply.code(201).send({
       id: user.id,
       email: user.email,
       displayName: user.displayName,
       avatarUrl: null,
+      emailVerified: user.emailVerifiedAt !== null,
       organization: { id: organization.id, legalName: organization.legalName, taxId: organization.taxId },
     });
   });
@@ -380,6 +395,33 @@ export function registerAuthRoutes(
     return reply.code(204).send();
   });
 
+  app.post("/auth/verify-email", { config: { rateLimit: AUTH_RATE_LIMIT } }, async (request, reply) => {
+    const token = (request.body as { token?: unknown } | undefined)?.token;
+    if (typeof token !== "string" || token.length < 20 || token.length > 200) {
+      return reply.code(400).send({ error: "Invalid or expired verification link" });
+    }
+    if (!(await confirmVerificationToken(prisma, token))) {
+      return reply.code(400).send({ error: "Invalid or expired verification link" });
+    }
+    return reply.send({ ok: true });
+  });
+
+  app.post("/auth/resend-verification", { config: { rateLimit: { max: 3, timeWindow: "1 hour" } } }, async (request, reply) => {
+    const userId = await userIdFromRequest(prisma, request);
+    if (userId === null) {
+      return reply.code(401).send({ error: "Login required" });
+    }
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, displayName: true, emailVerifiedAt: true } });
+    if (user === null) {
+      return reply.code(401).send({ error: "Login required" });
+    }
+    if (user.emailVerifiedAt !== null) {
+      return reply.send({ ok: true, alreadyVerified: true });
+    }
+    await sendVerificationEmail(prisma, user, verificationOrigin);
+    return reply.send({ ok: true });
+  });
+
   app.get("/auth/session", async (request, reply) => {
     const userId = await userIdFromRequest(prisma, request);
     if (userId === null) {
@@ -401,6 +443,7 @@ function presentUser(user: {
   email: string;
   displayName: string;
   avatarUrl?: string | null;
+  emailVerifiedAt?: Date | null;
   memberships: Array<{ organization: { id: string; legalName: string; taxId: string } }>;
 }) {
   return {
@@ -408,6 +451,7 @@ function presentUser(user: {
     email: user.email,
     displayName: user.displayName,
     avatarUrl: user.avatarUrl ?? null,
+    emailVerified: user.emailVerifiedAt != null,
     organizations: user.memberships.map((membership) => ({
       id: membership.organization.id,
       legalName: membership.organization.legalName,

@@ -75,7 +75,7 @@ export async function buildServer(config: AppConfig) {
     reply.header("X-Frame-Options", "DENY");
   });
 
-  registerAuthRoutes(app, database.prisma, config.cookie, config.registration, config.googleOAuth, config.webOrigins);
+  registerAuthRoutes(app, database.prisma, config.cookie, config.registration, config.googleOAuth, config.webOrigins, config.emailVerification);
   registerOrganizationGuard(app, database.prisma);
   registerHealthRoutes(app, {
     checkPostgres: () => checkPostgres(database.prisma),

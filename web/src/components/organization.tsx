@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 interface SessionUser {
   displayName: string;
   avatarUrl?: string | null;
+  emailVerified?: boolean;
   organizations: Array<{ id: string; legalName: string }>;
 }
 
@@ -15,6 +16,8 @@ interface OrganizationState {
   organizationName: string;
   displayName: string;
   avatarUrl: string | null;
+  /** False until the person confirms their address; AI reading and sending emails wait for it. */
+  emailVerified: boolean;
   select: (id: string, name: string) => void;
   refresh: () => Promise<boolean>;
   clear: () => void;
@@ -28,6 +31,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [organizationName, setOrganizationName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [emailVerified, setEmailVerified] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
@@ -35,6 +39,8 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       const organization = session.organizations[0];
       setDisplayName(session.displayName);
       setAvatarUrl(session.avatarUrl ?? null);
+      // Older APIs don't report it; treat that as verified so nothing gets blocked in the UI.
+      setEmailVerified(session.emailVerified ?? true);
       setOrganizationId(organization?.id ?? "");
       setOrganizationName(organization?.legalName ?? "");
       return true;
@@ -66,7 +72,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   }, []);
 
   return (
-    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, displayName, avatarUrl, select, refresh, clear }}>
+    <OrganizationContext.Provider value={{ ready, organizationId, organizationName, displayName, avatarUrl, emailVerified, select, refresh, clear }}>
       {children}
     </OrganizationContext.Provider>
   );

@@ -68,6 +68,18 @@ export type Dict = {
     themeDark: string;
     themeSystem: string;
   };
+  verify: {
+    banner: string;
+    resend: string;
+    resent: string;
+    resendFailed: string;
+    checking: string;
+    success: string;
+    successHint: string;
+    failed: string;
+    failedHint: string;
+    goHome: string;
+  };
   brand: {
     tagline: string;
   };
@@ -125,6 +137,8 @@ export type Dict = {
     dateAfter: string;
   };
   api: {
+    emailNotVerified: string;
+    invalidVerification: string;
     aiQuota: string;
     emailQuota: string;
     orgLimit: string;

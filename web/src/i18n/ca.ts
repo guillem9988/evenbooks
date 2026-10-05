@@ -58,6 +58,18 @@ export const ca: Dict = {
     themeDark: "Canvia al tema fosc",
     themeSystem: "Usa el tema del sistema",
   },
+  verify: {
+    banner: "Confirma el teu correu per poder llegir factures amb IA i enviar-les per correu. T’hem enviat un enllaç.",
+    resend: "Reenvia l’enllaç",
+    resent: "T’hem tornat a enviar l’enllaç. Mira la safata d’entrada (i el correu brossa).",
+    resendFailed: "No s’ha pogut reenviar l’enllaç",
+    checking: "Confirmant el teu correu…",
+    success: "Correu confirmat",
+    successHint: "Ja pots llegir factures amb IA i enviar correus.",
+    failed: "L’enllaç no és vàlid",
+    failedHint: "Potser ha caducat o ja s’ha fet servir. Entra a l’app i demana’n un de nou.",
+    goHome: "Ves a l’inici",
+  },
   brand: {
     tagline: "Gestió per a autònoms",
   },
@@ -115,6 +127,8 @@ export const ca: Dict = {
     dateAfter: "Ha de ser després de la data d’inici.",
   },
   api: {
+    emailNotVerified: "Confirma el teu correu per fer servir aquesta funció.",
+    invalidVerification: "L’enllaç de confirmació no és vàlid o ha caducat.",
     aiQuota: "Has arribat al límit diari de lectures amb IA. Torna-ho a provar demà o configura la teva pròpia clau d’IA a Configuració.",
     emailQuota: "Has arribat al límit diari de correus enviats. Torna-ho a provar demà.",
     orgLimit: "Has arribat al màxim d’organitzacions per compte.",

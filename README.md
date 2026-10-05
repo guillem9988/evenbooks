@@ -108,6 +108,7 @@ See [`DEPLOY.md`](DEPLOY.md) for the deployment guide.
 
 - Sign-up is closed by default in production. To open it, set `ALLOW_PUBLIC_REGISTRATION=true` (or make it invite-only with `REGISTRATION_INVITE_CODE`).
 - Per-user daily limits protect the server's shared AI keys and email reputation: `DAILY_AI_DOCUMENTS_PER_USER` (default 30; organizations with their own AI key are not counted), `DAILY_EMAILS_PER_USER` (default 20) and `MAX_ORGANIZATIONS_PER_USER` (default 3).
+- Email verification: with an email provider configured (`RESEND_API_KEY` and an `EMAIL_FROM` on a domain verified in Resend), password sign-ups must confirm their address before they can read invoices with AI or send emails. Google sign-ins count as verified. Force it with `EMAIL_VERIFICATION=required|off`.
 - Free-tier AI APIs (for example Gemini's free tier) may use submitted content to improve their models. If strangers upload real invoices, say so in your privacy notice or use a paid tier.
 - Set `GOOGLE_CLIENT_ID` on the API if you enable Google sign-in; without it the API refuses Google tokens.
 - If the web app reaches the API through its `/backend` proxy (`API_PROXY_URL` on Vercel), use `COOKIE_SAME_SITE=lax` so the session cookie is first-party.

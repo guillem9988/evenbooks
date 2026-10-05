@@ -58,6 +58,18 @@ export const es: Dict = {
     themeDark: "Cambiar al tema oscuro",
     themeSystem: "Usar el tema del sistema",
   },
+  verify: {
+    banner: "Confirma tu correo para poder leer facturas con IA y enviarlas por correo. Te hemos enviado un enlace.",
+    resend: "Reenviar el enlace",
+    resent: "Te hemos vuelto a enviar el enlace. Mira la bandeja de entrada (y el spam).",
+    resendFailed: "No se ha podido reenviar el enlace",
+    checking: "Confirmando tu correo…",
+    success: "Correo confirmado",
+    successHint: "Ya puedes leer facturas con IA y enviar correos.",
+    failed: "El enlace no es válido",
+    failedHint: "Quizá ha caducado o ya se ha usado. Entra en la app y pide uno nuevo.",
+    goHome: "Ir al inicio",
+  },
   brand: {
     tagline: "Gestión para autónomos",
   },
@@ -115,6 +127,8 @@ export const es: Dict = {
     dateAfter: "Tiene que ser después de la fecha de inicio.",
   },
   api: {
+    emailNotVerified: "Confirma tu correo para usar esta función.",
+    invalidVerification: "El enlace de confirmación no es válido o ha caducado.",
     aiQuota: "Has llegado al límite diario de lecturas con IA. Vuelve a intentarlo mañana o configura tu propia clave de IA en Configuración.",
     emailQuota: "Has llegado al límite diario de correos enviados. Vuelve a intentarlo mañana.",
     orgLimit: "Has llegado al máximo de organizaciones por cuenta.",

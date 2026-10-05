@@ -58,6 +58,18 @@ export const en: Dict = {
     themeDark: "Switch to dark theme",
     themeSystem: "Use system theme",
   },
+  verify: {
+    banner: "Confirm your email to read invoices with AI and send them by email. We sent you a link.",
+    resend: "Resend link",
+    resent: "We sent the link again. Check your inbox (and spam).",
+    resendFailed: "Could not resend the link",
+    checking: "Confirming your email…",
+    success: "Email confirmed",
+    successHint: "You can now read invoices with AI and send emails.",
+    failed: "This link is not valid",
+    failedHint: "It may have expired or been used already. Sign in and ask for a new one.",
+    goHome: "Go to the app",
+  },
   brand: {
     tagline: "Books for freelancers",
   },
@@ -115,6 +127,8 @@ export const en: Dict = {
     dateAfter: "Needs to be after the start date.",
   },
   api: {
+    emailNotVerified: "Confirm your email to use this feature.",
+    invalidVerification: "The confirmation link is invalid or has expired.",
     aiQuota: "You have reached the daily AI reading limit. Try again tomorrow or add your own AI key in Settings.",
     emailQuota: "You have reached the daily email limit. Try again tomorrow.",
     orgLimit: "You have reached the maximum number of organizations per account.",

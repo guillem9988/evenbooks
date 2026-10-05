@@ -66,6 +66,11 @@ export interface UsageLimits {
   organizationsPerUser: number;
 }
 
+export interface EmailVerificationConfig {
+  /** When false, new accounts are created already verified (e.g. no email provider configured). */
+  required: boolean;
+}
+
 export interface GoogleOAuthConfig {
   clientId: string | null;
   clientSecret: string | null;
@@ -85,6 +90,7 @@ export interface AppConfig {
   cookie: CookieConfig;
   registration: RegistrationConfig;
   limits: UsageLimits;
+  emailVerification: EmailVerificationConfig;
   googleOAuth: GoogleOAuthConfig;
   trustProxy: boolean;
   worker: WorkerConfig;
@@ -212,6 +218,18 @@ export function readCookieConfig(env: Env, production: boolean): CookieConfig {
     throw new Error("COOKIE_SAME_SITE=none needs COOKIE_SECURE=true; browsers drop it otherwise");
   }
   return { sameSite, secure, domain: optionalString(env, "COOKIE_DOMAIN") };
+}
+
+/**
+ * EMAIL_VERIFICATION=required|off. By default it is required only when an email provider
+ * (RESEND_API_KEY) is configured, since without one nobody could receive the link.
+ */
+export function readEmailVerificationConfig(env: Env): EmailVerificationConfig {
+  const mode = (optionalString(env, "EMAIL_VERIFICATION") ?? (optionalString(env, "RESEND_API_KEY") ? "required" : "off")).toLowerCase();
+  if (mode !== "required" && mode !== "off") {
+    throw new Error("EMAIL_VERIFICATION must be required or off");
+  }
+  return { required: mode === "required" };
 }
 
 /** Public sign-up is on in development; off in production unless ALLOW_PUBLIC_REGISTRATION=true. */
@@ -360,6 +378,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
       emailsPerDay: readInteger(env, "DAILY_EMAILS_PER_USER", 20, 0, 100_000),
       organizationsPerUser: readInteger(env, "MAX_ORGANIZATIONS_PER_USER", 3, 1, 1_000),
     },
+    emailVerification: readEmailVerificationConfig(env),
     googleOAuth: {
       clientId: optionalString(env, "GOOGLE_CLIENT_ID"),
       clientSecret: optionalString(env, "GOOGLE_CLIENT_SECRET"),

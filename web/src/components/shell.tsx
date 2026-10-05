@@ -15,6 +15,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { Logo } from "@/components/logo";
 import { OrganizationProvider, useOrganization } from "@/components/organization";
 import { ThemeProvider, ThemeSwitcher } from "@/components/theme";
+import { VerifyEmailBanner } from "@/components/verify-email";
 import { notifyError } from "@/components/ui-kit";
 import { I18nProvider, useT } from "@/i18n";
 import { api } from "@/lib/api";
@@ -49,7 +50,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
-  const { ready, organizationId } = useOrganization();
+  const { ready, organizationId, emailVerified } = useOrganization();
   const pathname = usePathname();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -64,6 +65,11 @@ function Frame({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [organizationId]);
+
+  // The link in the verification email must work whether or not the person is signed in.
+  if (pathname === "/verifica") {
+    return <>{children}</>;
+  }
 
   if (!ready) {
     return <LoadingSession />;
@@ -89,6 +95,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       <MobileBar onSearch={openPalette} />
       <main id="contingut" tabIndex={-1} className="flex-1 px-4 py-6 outline-none sm:px-6 lg:px-10 lg:py-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 animate-in fade-in duration-300" key={pathname}>
+          {emailVerified ? null : <VerifyEmailBanner />}
           {children}
         </div>
       </main>
