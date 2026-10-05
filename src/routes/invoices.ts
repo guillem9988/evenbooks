@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/prisma/client.js";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { UsageLimits } from "../config.js";
+import { isEmailVerified } from "../auth/verification.js";
 import { consumeQuota } from "../lib/quota.js";
 import { deleteObject, getObject, putObject } from "../lib/storage.js";
 
@@ -60,6 +61,9 @@ export function registerInvoiceRoutes(
     if (uploads.length === 0) {
       return reply.code(400).send({ error: "At least one PDF, PNG, or JPEG invoice is required" });
     }
+    if (request.userId !== undefined && !(await isEmailVerified(prisma, request.userId))) {
+      return reply.code(403).send({ error: "Email not verified" });
+    }
     if (!(await allowAiDocuments(request.userId, organizationId, uploads.length))) {
       return reply.code(429).send({ error: "Daily AI document limit reached" });
     }
@@ -102,6 +106,9 @@ export function registerInvoiceRoutes(
     });
     if (invoice === null) {
       return reply.code(404).send({ error: "Invoice not found" });
+    }
+    if (request.userId !== undefined && !(await isEmailVerified(prisma, request.userId))) {
+      return reply.code(403).send({ error: "Email not verified" });
     }
     if (!(await allowAiDocuments(request.userId, organizationId, 1))) {
       return reply.code(429).send({ error: "Daily AI document limit reached" });

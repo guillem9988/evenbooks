@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { IssuedInvoiceStatus, Prisma, type PrismaClient } from "../../generated/prisma/client.js";
 import { renderIssuedInvoicePdf } from "../billing/invoice-pdf.js";
 import { sendEmail } from "../lib/mailer.js";
+import { isEmailVerified } from "../auth/verification.js";
 import { consumeQuota } from "../lib/quota.js";
 import { formatEuroDisplay } from "../lib/money.js";
 import { cents, day, findOrganization, parseDay, readUuid } from "./org-params.js";
@@ -171,6 +172,9 @@ export function registerIssuedInvoiceRoutes(app: FastifyInstance, prisma: Prisma
 
     if (!targetEmail || !targetEmail.includes("@")) {
       return reply.code(400).send({ error: "El client no té cap adreça de correu electrònic vàlida." });
+    }
+    if (request.userId !== undefined && !(await isEmailVerified(prisma, request.userId))) {
+      return reply.code(403).send({ error: "Email not verified" });
     }
     if (request.userId !== undefined && !(await consumeQuota(prisma, request.userId, "email", emailsPerDay))) {
       return reply.code(429).send({ error: "Daily email limit reached" });

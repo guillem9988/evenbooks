@@ -31,6 +31,8 @@ const API_KEYS: Record<string, keyof Dict["api"]> = {
   "Daily AI document limit reached": "aiQuota",
   "Daily email limit reached": "emailQuota",
   "Organization limit reached": "orgLimit",
+  "Email not verified": "emailNotVerified",
+  "Invalid or expired verification link": "invalidVerification",
 };
 
 type Params = Record<string, string | number>;

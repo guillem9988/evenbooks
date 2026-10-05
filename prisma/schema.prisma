@@ -263,6 +263,11 @@ model User {
   googleId     String?  @unique @map("google_id") @db.VarChar(255)
   avatarUrl    String?  @map("avatar_url") @db.VarChar(1024)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Null until the person opens the link sent to their address (Google sign-in counts as verified).
+  emailVerifiedAt            DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  /// SHA-256 of the pending verification token; the token itself is only ever in the email.
+  emailVerificationTokenHash String?   @unique @map("email_verification_token_hash") @db.VarChar(64)
+  emailVerificationExpiresAt DateTime? @map("email_verification_expires_at") @db.Timestamptz(6)
 
   memberships Membership[]
   sessions    Session[]
