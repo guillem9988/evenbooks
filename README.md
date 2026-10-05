@@ -12,7 +12,9 @@ MatchInvoice is a complete, self-hostable SaaS solution tailored to Spanish and 
 - **📑 Quotes & Recurring (`/pressupostos`, `/recurrents`)**: Generate estimates, convert quotes to invoices upon approval, and automate recurring monthly/quarterly billings.
 - **🤖 AI & OCR Expense Ingestion (`/despeses`)**: Upload invoice PDFs, photos, and scanned receipts. Automatically extracts vendor name, tax ID, invoice number, date, VAT, and totals. Includes full manual review and correction tools.
 - **🏦 Automated Bank Reconciliation (`/banc`)**: Import bank statements in `.csv`, `.xlsx`, `.ofx`, or `.qfx` formats (compatible with CaixaBank, BBVA, Santander, Sabadell, N26, Revolut, etc.) and match transactions automatically with invoices using PostgreSQL `pg_trgm` fuzzy matching.
-- **🏛️ Tax Management (`/impostos`)**: Real-time quarterly calculation of **Modelo 303** (IVA repercutit vs soportat) and **Modelo 130** (IRPF rendiments d'activitat).
+- **🏷️ Automatic expense categories**: Each new expense is categorized from what you chose before for the same vendor, then the AI extractor's guess, then keyword rules for common Spanish vendors.
+- **🏛️ Tax Management (`/impostos`)**: Quarterly preview of **Modelo 303** (IVA repercutit vs suportat) and **Modelo 130** (accumulated from 1 January, net of VAT, with a box-by-box breakdown), plus an AEAT deadline calendar on the dashboard.
+- **📊 Dashboard**: 12-month income vs expenses chart, receivables ageing with one-click payment reminders, and a to-do list.
 - **📦 Accountant Pack (`/reports`)**: Export quarterly ZIP bundles with clean, renamed invoice PDFs and official AEAT-compatible Excel/CSV ledger summaries.
 - **⚙️ Per-Organization API Settings (`/configuracio`)**:
   - Each user or organization can configure their own **OpenAI API Key** (`sk-...`) or **Google Document AI** service account credentials directly in the web UI.
@@ -29,7 +31,7 @@ MatchInvoice is a complete, self-hostable SaaS solution tailored to Spanish and 
 - **Backend API (`src/`)**: Fastify, TypeScript, Prisma ORM, BullMQ worker for asynchronous invoice OCR jobs.
 - **Database**: PostgreSQL 16 with `pg_trgm` (trigram fuzzy matching) and `pgcrypto`.
 - **Cache & Queues**: Redis 7 for BullMQ extraction queue.
-- **Object Storage**: S3-compatible storage (MinIO locally, Supabase Storage or AWS S3 in production).
+- **Object Storage**: S3-compatible storage (SeaweedFS locally, Supabase Storage or AWS S3 in production).
 
 ---
 
@@ -49,7 +51,7 @@ cd invoices
 
 ### 2. Start dependencies with Docker Compose
 
-Starts PostgreSQL, Redis, and MinIO storage on local ports:
+Starts PostgreSQL, Redis, and S3-compatible storage (SeaweedFS) on local ports, and creates the bucket:
 
 ```bash
 docker compose up -d
@@ -97,17 +99,27 @@ MatchInvoice is designed to be easily deployed on modern cloud platforms:
 
 - **Frontend**: [Vercel](https://vercel.com) (run `cd web && npx vercel deploy --prod`)
 - **Backend**: [Render](https://render.com) (via `Dockerfile` and `render.yaml`), [Railway](https://railway.app), or any Docker host.
-- **Database & Storage**: [Supabase](https://supabase.com) (Postgres + Storage) or self-hosted PostgreSQL + MinIO.
+- **Database & Storage**: [Supabase](https://supabase.com) (Postgres + Storage) or self-hosted PostgreSQL + any S3-compatible store.
 - **Queue**: [Upstash](https://upstash.com) Redis or self-hosted Redis.
 
 See [`DEPLOY.md`](DEPLOY.md) for the deployment guide.
+
+### Running a public instance
+
+- Keep sign-up closed (`ALLOW_PUBLIC_REGISTRATION=false`, the production default) or invite-only (`REGISTRATION_INVITE_CODE`). Open sign-up lets anyone spend your server-wide AI keys and send email from your domain.
+- Set `GOOGLE_CLIENT_ID` on the API if you enable Google sign-in; without it the API refuses Google tokens.
+- If the web app reaches the API through its `/backend` proxy (`API_PROXY_URL` on Vercel), use `COOKIE_SAME_SITE=lax` so the session cookie is first-party.
+
+## 🔐 Security
+
+Please report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
 
 ---
 
 ## 🛠️ Project Structure
 
 ```
-├── docker-compose.yml         # Local Postgres, Redis, and MinIO
+├── docker-compose.yml         # Local Postgres, Redis, and S3 (SeaweedFS)
 ├── prisma/
 │   ├── schema.prisma          # Database schema & relations
 │   └── migrations/            # SQL migration history
