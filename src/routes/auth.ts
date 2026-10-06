@@ -138,10 +138,19 @@ async function findOrCreateGoogleUser(
   return { user: createdUser, isNew: true };
 }
 
-function resolveCallbackUri(request: FastifyRequest): string {
+function resolveCallbackUri(request: FastifyRequest, webOrigins: string[]): string {
   const proto = (request.headers["x-forwarded-proto"] as string) || "http";
   const host = (request.headers["x-forwarded-host"] as string) || request.headers.host || "127.0.0.1:43123";
-  return `${proto}://${host}/auth/google/callback`;
+  return googleCallbackUri(`${proto}://${host}`, webOrigins);
+}
+
+/**
+ * Where Google sends the browser back. A request that came through the web panel's `/backend`
+ * proxy (its host is one of the web origins) must come back through that proxy too, so the
+ * session cookie stays on the panel's domain; a direct call to the API comes back to the API.
+ */
+export function googleCallbackUri(origin: string, webOrigins: string[]): string {
+  return webOrigins.includes(origin) ? `${origin}/backend/auth/google/callback` : `${origin}/auth/google/callback`;
 }
 
 /** Slows down password guessing and sign-up spam: per client IP, on the routes that check credentials. */
@@ -297,7 +306,7 @@ export function registerAuthRoutes(
       maxAge: 600,
     });
 
-    const callbackUri = resolveCallbackUri(request);
+    const callbackUri = resolveCallbackUri(request, webOrigins);
     const params = new URLSearchParams({
       client_id: googleOAuth.clientId,
       redirect_uri: callbackUri,
@@ -342,7 +351,7 @@ export function registerAuthRoutes(
       return reply.redirect(`${redirectTarget}?auth_error=${encodeURIComponent("Google OAuth not configured")}`);
     }
 
-    const callbackUri = resolveCallbackUri(request);
+    const callbackUri = resolveCallbackUri(request, webOrigins);
 
     try {
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {

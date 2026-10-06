@@ -1369,11 +1369,11 @@ export default function SettingsPage() {
                     <div className="mt-2 flex flex-col gap-1.5 font-mono text-[11px] bg-background/60 p-2.5 rounded border">
                       <div>
                         <span className="text-muted-foreground">Authorized JavaScript origins:</span>{" "}
-                        <span className="text-foreground">{typeof window !== "undefined" ? window.location.origin : "https://matchinvoice.vercel.app"}</span>
+                        <span className="text-foreground">{typeof window !== "undefined" ? window.location.origin : "https://evenbooks.app"}</span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Authorized redirect URIs:</span>{" "}
-                        <span className="text-foreground">{typeof window !== "undefined" ? `${window.location.origin}/backend/auth/google/callback` : "https://matchinvoice.vercel.app/backend/auth/google/callback"}</span>
+                        <span className="text-foreground">{typeof window !== "undefined" ? `${window.location.origin}/backend/auth/google/callback` : "https://evenbooks.app/backend/auth/google/callback"}</span>
                       </div>
                     </div>
                   </div>

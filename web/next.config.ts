@@ -25,6 +25,17 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // The old production address keeps working by sending people to the new domain.
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "matchinvoice.vercel.app" }],
+        destination: "https://evenbooks.app/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [{ source: "/backend/:path*", destination: `${proxyTarget}/:path*` }];
   },
