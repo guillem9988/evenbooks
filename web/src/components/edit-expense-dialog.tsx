@@ -23,6 +23,8 @@ export interface ExpenseItem {
   originalFilename?: string | null;
   mimeType?: string | null;
   hasFile?: boolean;
+  /** Why the reading failed, as the server recorded it (only for FAILED rows). */
+  errorMessage?: string | null;
 }
 
 const CATEGORIES = [
