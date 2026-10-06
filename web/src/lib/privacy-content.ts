@@ -32,7 +32,7 @@ export const PRIVACY: Record<Locale, PrivacyContent> = {
       {
         title: "1. Qui tracta les teves dades",
         paragraphs: [
-          "El responsable del tractament és la persona indicada a dalt, que gestiona aquesta instància de MatchInvoice. Per a qualsevol qüestió de privacitat, escriu al correu de contacte.",
+          "El responsable del tractament és la persona indicada a dalt, que gestiona aquesta instància de Evenbooks. Per a qualsevol qüestió de privacitat, escriu al correu de contacte.",
         ],
       },
       {
@@ -114,7 +114,7 @@ export const PRIVACY: Record<Locale, PrivacyContent> = {
       {
         title: "1. Quién trata tus datos",
         paragraphs: [
-          "El responsable del tratamiento es la persona indicada arriba, que gestiona esta instancia de MatchInvoice. Para cualquier cuestión de privacidad, escribe al correo de contacto.",
+          "El responsable del tratamiento es la persona indicada arriba, que gestiona esta instancia de Evenbooks. Para cualquier cuestión de privacidad, escribe al correo de contacto.",
         ],
       },
       {
@@ -196,7 +196,7 @@ export const PRIVACY: Record<Locale, PrivacyContent> = {
       {
         title: "1. Who processes your data",
         paragraphs: [
-          "The data controller is the person named above, who runs this MatchInvoice instance. For any privacy question, write to the contact address.",
+          "The data controller is the person named above, who runs this Evenbooks instance. For any privacy question, write to the contact address.",
         ],
       },
       {

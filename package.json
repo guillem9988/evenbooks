@@ -1,5 +1,5 @@
 {
-  "name": "matchinvoice",
+  "name": "evenbooks",
   "version": "0.1.0",
   "private": true,
   "description": "Bank transaction and invoice reconciliation for freelancers and SMEs.",

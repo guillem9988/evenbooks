@@ -19,7 +19,7 @@ export async function sendVerificationEmail(prisma: PrismaClient, user: { id: st
   const link = `${webOrigin.replace(/\/+$/, "")}/verifica?token=${encodeURIComponent(token)}`;
   await sendEmail({
     to: user.email,
-    subject: "Confirma el teu correu · Confirma tu correo · Confirm your email — MatchInvoice",
+    subject: "Confirma el teu correu · Confirma tu correo · Confirm your email — Evenbooks",
     text: [
       `Hola ${user.displayName},`,
       "",
@@ -65,7 +65,7 @@ export async function sendPasswordResetEmail(prisma: PrismaClient, user: { id: s
   const link = `${webOrigin.replace(/\/+$/, "")}/restableix?token=${encodeURIComponent(token)}`;
   await sendEmail({
     to: user.email,
-    subject: "Restableix la contrasenya · Restablece la contraseña · Reset your password — MatchInvoice",
+    subject: "Restableix la contrasenya · Restablece la contraseña · Reset your password — Evenbooks",
     text: [
       `Hola ${user.displayName},`,
       "",

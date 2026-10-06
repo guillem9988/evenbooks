@@ -1,6 +1,6 @@
-# Desplegament de MatchInvoice
+# Desplegament de Evenbooks
 
-Guia pas a pas per posar MatchInvoice en producció amb plans gratuïts:
+Guia pas a pas per posar Evenbooks en producció amb plans gratuïts:
 
 | Peça | Servei | Què hi viu |
 | --- | --- | --- |

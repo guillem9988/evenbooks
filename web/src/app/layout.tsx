@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MatchInvoice",
+  title: "Evenbooks",
   description: "Factures, pressupostos, despeses i conciliació per a autònoms.",
 };
 
