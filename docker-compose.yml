@@ -1,4 +1,4 @@
-# Local infrastructure for MatchInvoice.
+# Local infrastructure for Evenbooks.
 # Host ports are intentionally uncommon: Postgres 54329, Redis 63799,
 # S3 API (SeaweedFS) 59000.
 # pg_trgm does not need shared_preload_libraries. Extensions are created

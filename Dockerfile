@@ -1,4 +1,4 @@
-# MatchInvoice API image for Render (or any Docker host).
+# Evenbooks API image for Render (or any Docker host).
 # On start it applies pending Prisma migrations, then runs the Fastify API. The BullMQ
 # invoice worker starts inside the same process (see src/server.ts), so one service is enough.
 

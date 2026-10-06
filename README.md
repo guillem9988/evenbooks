@@ -1,8 +1,8 @@
-# MatchInvoice
+# Evenbooks
 
 > Open-source invoicing, AI-powered receipt extraction, bank reconciliation, and tax management for freelancers (*autònoms*) and SMEs in Spain.
 
-MatchInvoice is a complete, self-hostable SaaS solution tailored to Spanish and European fiscal requirements (IVA, IRPF, NIF/CIF, Modelo 303, Modelo 130).
+Evenbooks is a complete, self-hostable SaaS solution tailored to Spanish and European fiscal requirements (IVA, IRPF, NIF/CIF, Modelo 303, Modelo 130).
 
 ---
 
@@ -46,8 +46,8 @@ MatchInvoice is a complete, self-hostable SaaS solution tailored to Spanish and 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/guillem9988/invoices.git
-cd invoices
+git clone https://github.com/guillem9988/evenbooks.git
+cd evenbooks
 ```
 
 ### 2. Start dependencies with Docker Compose
@@ -96,7 +96,7 @@ Users can manage their credentials and connections directly from the UI without 
 
 ## 🚢 Deployment
 
-MatchInvoice is designed to be easily deployed on modern cloud platforms:
+Evenbooks is designed to be easily deployed on modern cloud platforms:
 
 - **Frontend**: [Vercel](https://vercel.com) (run `cd web && npx vercel deploy --prod`)
 - **Backend**: [Render](https://render.com) (via `Dockerfile` and `render.yaml`), [Railway](https://railway.app), or any Docker host.

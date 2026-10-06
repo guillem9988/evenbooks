@@ -22,7 +22,7 @@ export interface SendEmailResult {
 
 export async function sendEmail(options: SendEmailOptions): Promise<SendEmailResult> {
   const resendApiKey = process.env.RESEND_API_KEY?.trim();
-  const defaultFrom = process.env.EMAIL_FROM?.trim() || "MatchInvoice <factures@matchinvoice.com>";
+  const defaultFrom = process.env.EMAIL_FROM?.trim() || "Evenbooks <no-reply@evenbooks.app>";
 
   if (resendApiKey) {
     try {

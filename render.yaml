@@ -1,4 +1,4 @@
-# Render Blueprint for the MatchInvoice API. The web panel deploys to Vercel from web/.
+# Render Blueprint for the Evenbooks API. The web panel deploys to Vercel from web/.
 # Values marked `sync: false` are secrets: Render asks for them when the Blueprint is
 # created. They never live in git. See DEPLOY.md.
 

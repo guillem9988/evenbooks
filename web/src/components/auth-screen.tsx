@@ -260,7 +260,7 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
         <div className="relative flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
             <Logo className="size-9 bg-white/15 from-white/20 to-white/5 backdrop-blur" />
-            <span className="text-lg font-semibold">MatchInvoice</span>
+            <span className="text-lg font-semibold">Evenbooks</span>
           </div>
           <LanguageSwitcher className="h-8 w-auto border-white/25 bg-white/10 text-xs text-white [&>option]:text-foreground" />
         </div>
@@ -286,7 +286,7 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
             <div className="mb-2 flex items-center justify-between gap-2 lg:hidden">
               <div className="flex items-center gap-2">
                 <Logo />
-                <span className="font-semibold">MatchInvoice</span>
+                <span className="font-semibold">Evenbooks</span>
               </div>
               <LanguageSwitcher className="h-8 w-auto text-xs" />
             </div>

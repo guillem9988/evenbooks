@@ -1,4 +1,4 @@
-# Runbook: desplegar MatchInvoice amb Codex (computer use)
+# Runbook: desplegar Evenbooks amb Codex (computer use)
 
 Aquest document és per a un **agent amb accés al navegador** (Codex amb computer use). Segueix-lo en ordre, pas a pas. Cada pas té: **Obre** (URL), **Clica** (text visible del botó o etiqueta), **Escriu / Tria** (valors), **Comprova** (què ha de sortir a la pantalla) i, quan cal, **ATURA’T**.
 
@@ -237,7 +237,7 @@ No creïs un projecte, no generis una contrasenya nova i no facis **Reset databa
 ## Pas 7 — Verificació final
 
 1. **Obre** `<URL API Render>/health`. **Comprova** `"status":"ok"` i `postgres`, `redis`, `minio` a `"up"`. Si triga, espera 60 segons i recarrega (Render desperta el servei).
-2. **Obre** el **Domini Vercel**. **Comprova** que surt la pantalla **Entra al teu compte** amb el logotip **MI** i el text **MatchInvoice**. El registre públic ha d’estar tancat (sense pestanya **Registra’t**), tret que hi hagi invitació.
+2. **Obre** el **Domini Vercel**. **Comprova** que surt la pantalla **Entra al teu compte** amb el logotip (un llibre obert amb una marca de verificació) i el text **Evenbooks**. El registre públic ha d’estar tancat (sense pestanya **Registra’t**), tret que hi hagi invitació.
 3. Si ja hi ha un compte: **Escriu** el correu i la contrasenya → **Clica** **Entra**. **Comprova** que arribes a **Inici**. A la xarxa del navegador, les crides han d’anar a `/backend/*` (mateix origen), no a `onrender.com`.
 4. **Recarrega** la pàgina (F5 / Cmd+R). **Comprova** que continues a **Inici** (la galeta de sessió funciona).
 5. A baix de la barra lateral, **Clica** la icona **Tanca la sessió**. **Comprova** que tornes a **Entra al teu compte**.
@@ -336,7 +336,7 @@ Document AI llegeix PDF i fotos de factures amb el processador **Invoice Parser*
 Retorna a l’usuari exactament això, sense cap secret:
 
 ```
-Desplegament MatchInvoice
+Desplegament Evenbooks
 - GitHub: main amb Dockerfile i render.yaml ✔/✘
 - Supabase: projecte invoices (ref <project-ref>, Sydney ap-southeast-2, rol matchinvoice), bucket matchinvoice privat, extensions pg_trgm i pgcrypto, migracions ja aplicades ✔/✘
 - Upstash: base de dades matchinvoice (Free, Sydney o Singapore — la més propera a Sydney) ✔/✘

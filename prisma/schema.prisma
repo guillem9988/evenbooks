@@ -1,4 +1,4 @@
-// MatchInvoice reconciliation schema.
+// Evenbooks reconciliation schema.
 // Extensions (pgcrypto, pg_trgm) are created in the SQL migration. Prisma does
 // not install extensions. Trigram indexes use raw("gin_trgm_ops") so later
 // migrations do not drop them. The database URL lives in prisma.config.ts.

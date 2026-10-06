@@ -170,7 +170,7 @@ function Brand() {
     <Link href="/" className="flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
       <Logo />
       <span className="leading-tight">
-        <span className="block text-sm font-semibold tracking-tight">MatchInvoice</span>
+        <span className="block text-sm font-semibold tracking-tight">Evenbooks</span>
         <span className="block text-xs text-muted-foreground">{t("brand.tagline")}</span>
       </span>
     </Link>
@@ -281,7 +281,7 @@ function MobileBar({ onSearch }: { onSearch: () => void }) {
       <Button type="button" variant="ghost" size="icon" aria-label={t("common.menu")} aria-expanded={open} onClick={() => setOpen(true)}>
         <MenuIcon />
       </Button>
-      <p className="flex-1 truncate text-sm font-semibold">{currentLabel ?? "MatchInvoice"}</p>
+      <p className="flex-1 truncate text-sm font-semibold">{currentLabel ?? "Evenbooks"}</p>
       <Button type="button" variant="ghost" size="icon" aria-label={t("command.open")} onClick={onSearch}>
         <SearchIcon />
       </Button>
