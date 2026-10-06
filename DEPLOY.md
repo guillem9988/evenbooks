@@ -145,7 +145,7 @@ Comprova-la: obre `https://matchinvoice-api.onrender.com/health`. Ha de dir `"st
 5. **Environment Variables** (mode proxy, recomanat — mateixa-origen i galetes de primera part):
    - `API_PROXY_URL` = la URL de Render del pas 4.3, sense barra final.
    - **No** posis `NEXT_PUBLIC_API_URL` (o deixa-la buida). Si existeix, esborra-la: amb ella el navegador crida Render en cross-site i Safari / molts navegadors bloquegen la galeta de sessió (l’**Entra** sembla que no fa res).
-6. **Deploy**. En acabar, copia el domini de producció (per exemple `https://matchinvoice.vercel.app`; si el nom estava agafat, serà `https://matchinvoice-xxxx.vercel.app`).
+6. **Deploy**. En acabar, copia el domini de producció (per exemple `https://<projecte>.vercel.app`).
 
 ---
 

@@ -1,7 +1,7 @@
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
-import { registerAuthRoutes, safeRedirectTarget, verifyGoogleCredential } from "./auth.js";
+import { googleCallbackUri, registerAuthRoutes, safeRedirectTarget, verifyGoogleCredential } from "./auth.js";
 
 describe("verifyGoogleCredential", () => {
   it("rejects when tokeninfo endpoint fails", async () => {
@@ -152,6 +152,14 @@ describe("Google Auth routes", () => {
     expect(cookies).toBeDefined();
     const stateCookie = Array.isArray(cookies) ? cookies.find((c) => c.startsWith("mi_oauth_state=")) : cookies;
     expect(stateCookie).toBeDefined();
+  });
+});
+
+describe("googleCallbackUri", () => {
+  it("comes back through the web panel proxy when the request came from the panel", () => {
+    const origins = ["https://evenbooks.app", "https://matchinvoice.vercel.app"];
+    expect(googleCallbackUri("https://evenbooks.app", origins)).toBe("https://evenbooks.app/backend/auth/google/callback");
+    expect(googleCallbackUri("https://matchinvoice-api.onrender.com", origins)).toBe("https://matchinvoice-api.onrender.com/auth/google/callback");
   });
 });
 
