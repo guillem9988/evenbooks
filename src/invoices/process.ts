@@ -178,6 +178,8 @@ export async function processInvoiceJob(
     await reconcileOrganization(prisma, invoice.organizationId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invoice extraction failed";
+    // Without this line a failed reading is only visible in the database.
+    console.warn(JSON.stringify({ level: 40, msg: "invoice extraction failed", invoiceId, error: message.slice(0, 500) }));
     await prisma.invoice
       .update({
         where: { id: invoiceId },

@@ -43,6 +43,7 @@ export function registerExpenseRoutes(app: FastifyInstance, prisma: PrismaClient
         originalFilename: row.originalFilename,
         mimeType: row.mimeType,
         hasFile: Boolean(row.storageKey),
+        errorMessage: row.status === InvoiceStatus.FAILED ? (row.errorMessage ?? "").slice(0, 300) || null : null,
       })),
     });
   });

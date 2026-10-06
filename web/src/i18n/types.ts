@@ -538,6 +538,9 @@ export type Dict = {
     toReviewHint: string;
     uncategorizedCallout: string;
     uncategorizedCalloutHint: string;
+    failKey: string;
+    failQuota: string;
+    failUnreadable: string;
     autoCategorize: string;
     autoCategorizeDone: string;
     autoCategorizeNone: string;

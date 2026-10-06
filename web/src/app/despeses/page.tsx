@@ -353,6 +353,7 @@ export default function ExpensesPage() {
                             <TableCell>
                               <div className="flex flex-col items-start gap-1">
                                 <ExpenseStatusBadge status={row.status} />
+                                {row.status === "FAILED" ? <FailureReason message={row.errorMessage} /> : null}
                                 {row.status === "FAILED" ? (
                                   <div className="flex items-center gap-1 mt-0.5">
                                     <Button
@@ -430,6 +431,7 @@ export default function ExpensesPage() {
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             <ExpenseStatusBadge status={row.status} />
+                            {row.status === "FAILED" ? <FailureReason message={row.errorMessage} className="text-right" /> : null}
                             {row.status === "FAILED" ? (
                               <Button
                                 variant="ghost"
@@ -550,5 +552,23 @@ function CategorySelect({ row, disabled, onSave }: { row: ExpenseItem; disabled:
         </option>
       ))}
     </NativeSelect>
+  );
+}
+
+/** The reason a reading failed: a plain sentence for the usual causes, the server's text otherwise. */
+function FailureReason({ message, className }: { message?: string | null; className?: string }) {
+  const t = useT();
+  if (!message) return null;
+  const text = /API key not valid|API_KEY_INVALID|PERMISSION_DENIED|401|403/i.test(message)
+    ? t("expenses.failKey")
+    : /429|quota|RESOURCE_EXHAUSTED|rate limit/i.test(message)
+      ? t("expenses.failQuota")
+      : /Tesseract|no usable|did not find/i.test(message)
+        ? t("expenses.failUnreadable")
+        : message;
+  return (
+    <p className={`max-w-56 text-xs text-muted-foreground line-clamp-2 ${className ?? ""}`} title={message}>
+      {text}
+    </p>
   );
 }
