@@ -12,6 +12,7 @@ export const STORAGE_KEY = "matchinvoice-locale";
 
 export type Dict = {
   common: {
+    terms: string;
     edit: string;
     save: string;
     amounts: string;
@@ -165,6 +166,7 @@ export type Dict = {
     zero: string;
   };
   validation: {
+    acceptTerms: string;
     email: string;
     passwordMin: string;
     displayName: string;
@@ -213,8 +215,10 @@ export type Dict = {
     cannotDeleteConvertedQuote: string;
   };
   auth: {
-    privacyConsent: string;
-    privacyInfo: string;
+    acceptTermsPrefix: string;
+    termsLink: string;
+    and: string;
+    googleConsent: string;
     privacyLink: string;
     points: readonly [string, string, string, string];
     hero: string;

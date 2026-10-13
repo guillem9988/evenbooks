@@ -2,6 +2,7 @@ import type { Dict } from "./types";
 
 export const en: Dict = {
   common: {
+    terms: "Terms of use",
     edit: "Edit",
     save: "Save",
     amounts: "Amounts",
@@ -155,6 +156,7 @@ export const en: Dict = {
     zero: "Needs to be more than 0.",
   },
   validation: {
+    acceptTerms: "You need to accept the terms of use and the privacy policy.",
     email: "Enter a valid email.",
     passwordMin: "At least 8 characters.",
     displayName: "Enter your name.",
@@ -203,8 +205,10 @@ export const en: Dict = {
     cannotDeleteConvertedQuote: "Cannot delete an already invoiced quote.",
   },
   auth: {
-    privacyConsent: "By creating an account you accept the",
-    privacyInfo: "How we handle your data:",
+    acceptTermsPrefix: "I accept the",
+    termsLink: "terms of use",
+    and: "and the",
+    googleConsent: "By continuing, including with Google, you accept the",
     privacyLink: "privacy policy",
     points: [
       "Invoices, quotes and series with PDF",
@@ -720,7 +724,7 @@ export const en: Dict = {
     title: "Taxes",
     description: "Preview of models 303 (VAT) and 130 (income tax) from this quarter’s invoices.",
     loadFailed: "Couldn’t load the preview",
-    disclaimer: "Rough guide only. Not an AEAT filing — check with your accountant.",
+    disclaimer: "An estimate only — not tax advice and not an AEAT filing. Check it with your accountant before filing anything.",
     model303due: "Model 303 · to pay",
     model303credit: "Model 303 · to reclaim",
     model303hint: "Output VAT minus input",

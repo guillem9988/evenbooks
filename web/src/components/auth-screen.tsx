@@ -14,7 +14,7 @@ import { useI18n, useT } from "@/i18n";
 import { ApiError, api, apiPath } from "@/lib/api";
 
 type Mode = "login" | "register";
-type Errors = Partial<Record<"email" | "password" | "displayName" | "legalName" | "taxId" | "inviteCode", string>>;
+type Errors = Partial<Record<"email" | "password" | "displayName" | "legalName" | "taxId" | "inviteCode" | "terms", string>>;
 type RegistrationInfo = {
   open: boolean;
   inviteRequired: boolean;
@@ -58,6 +58,7 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
   const [legalName, setLegalName] = useState("");
   const [taxId, setTaxId] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -200,6 +201,7 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
       if (legalName.trim() === "") next.legalName = t("validation.legalName");
       if (taxId.trim() === "") next.taxId = t("validation.taxId");
       if (registration?.inviteRequired && inviteCode.trim() === "") next.inviteCode = t("validation.inviteCode");
+      if (!acceptedTerms) next.terms = t("validation.acceptTerms");
     }
     return next;
   }
@@ -423,6 +425,36 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
                   />
                 </Field>
               ) : null}
+              {mode === "register" ? (
+                <div className="flex flex-col gap-1">
+                  <label className="flex items-start gap-2 text-sm leading-snug">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]"
+                      checked={acceptedTerms}
+                      disabled={!registerOpen}
+                      onChange={(event) => setAcceptedTerms(event.target.checked)}
+                      aria-invalid={errors.terms ? true : undefined}
+                      aria-describedby={errors.terms ? "auth-terms-error" : undefined}
+                    />
+                    <span>
+                      {t("auth.acceptTermsPrefix")}{" "}
+                      <a href="/condicions" target="_blank" className="font-medium text-primary underline-offset-4 hover:underline">
+                        {t("auth.termsLink")}
+                      </a>{" "}
+                      {t("auth.and")}{" "}
+                      <a href="/privacitat" target="_blank" className="font-medium text-primary underline-offset-4 hover:underline">
+                        {t("auth.privacyLink")}
+                      </a>
+                    </span>
+                  </label>
+                  {errors.terms ? (
+                    <p id="auth-terms-error" className="text-xs text-destructive">
+                      {errors.terms}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <ErrorBanner message={error} />
               <Button type="submit" size="lg" disabled={busy || (mode === "register" && !registerOpen)}>
                 {busy
@@ -436,7 +468,11 @@ export function AuthScreen({ initialMode = "login" }: { initialMode?: Mode }) {
             </form>
 
             <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-              {mode === "register" ? t("auth.privacyConsent") : t("auth.privacyInfo")}{" "}
+              {t("auth.googleConsent")}{" "}
+              <a href="/condicions" className="font-medium text-primary underline-offset-4 hover:underline">
+                {t("auth.termsLink")}
+              </a>{" "}
+              {t("auth.and")}{" "}
               <a href="/privacitat" className="font-medium text-primary underline-offset-4 hover:underline">
                 {t("auth.privacyLink")}
               </a>
