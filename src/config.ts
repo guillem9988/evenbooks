@@ -61,7 +61,8 @@ export interface RegistrationConfig {
 
 /** Per-user caps that keep one account from exhausting shared AI quota, email reputation or storage. */
 export interface UsageLimits {
-  aiDocumentsPerDay: number;
+  /** AI readings per user per calendar month with the service's keys; an organization's own keys are not counted. */
+  aiDocumentsPerMonth: number;
   emailsPerDay: number;
   organizationsPerUser: number;
 }
@@ -374,7 +375,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
     cookie: readCookieConfig(env, production),
     registration: readRegistrationConfig(env, production),
     limits: {
-      aiDocumentsPerDay: readInteger(env, "DAILY_AI_DOCUMENTS_PER_USER", 30, 0, 100_000),
+      aiDocumentsPerMonth: readInteger(env, "MONTHLY_AI_DOCUMENTS_PER_USER", 20, 0, 100_000),
       emailsPerDay: readInteger(env, "DAILY_EMAILS_PER_USER", 20, 0, 100_000),
       organizationsPerUser: readInteger(env, "MAX_ORGANIZATIONS_PER_USER", 3, 1, 1_000),
     },

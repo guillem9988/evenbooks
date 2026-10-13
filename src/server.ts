@@ -94,7 +94,7 @@ export async function buildServer(config: AppConfig) {
   registerDashboardRoutes(app, database.prisma);
   registerReconcileRoutes(app, database.prisma);
   registerReconciliationRoutes(app, database.prisma);
-  registerStatementRoutes(app, database.prisma, config.limits.aiDocumentsPerDay);
+  registerStatementRoutes(app, database.prisma, config.limits.aiDocumentsPerMonth);
   registerInvoiceRoutes(app, database.prisma, storage, config.s3.bucket, invoiceQueue, config.limits);
   registerSettingsRoutes(app, database.prisma, config.extractor);
   registerReportRoutes(app, database.prisma, {

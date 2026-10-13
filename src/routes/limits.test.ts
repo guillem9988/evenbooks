@@ -5,7 +5,7 @@ import { openSession, withSession } from "../test/session.js";
 
 // Tight limits so each one trips quickly; the rest of the configuration is the normal test setup.
 const app = await buildServer(
-  loadConfig({ ...process.env, DAILY_AI_DOCUMENTS_PER_USER: "0", DAILY_EMAILS_PER_USER: "1", MAX_ORGANIZATIONS_PER_USER: "2" }),
+  loadConfig({ ...process.env, MONTHLY_AI_DOCUMENTS_PER_USER: "0", DAILY_EMAILS_PER_USER: "1", MAX_ORGANIZATIONS_PER_USER: "2" }),
 );
 const session = await openSession(app, "limits");
 const inject = withSession(app, session.cookie);
@@ -23,7 +23,7 @@ describe("per-user usage limits", () => {
     expect(third.json()).toEqual({ error: "Organization limit reached" });
   });
 
-  it("refuses AI uploads over the daily limit before storing anything", async () => {
+  it("refuses AI uploads over the monthly limit before storing anything", async () => {
     const boundary = "----limits";
     const body = [`--${boundary}`, 'Content-Disposition: form-data; name="files"; filename="f.pdf"', "Content-Type: application/pdf", "", "%PDF-1.4 test", `--${boundary}--`, ""].join("\r\n");
     const response = await inject({
@@ -33,7 +33,15 @@ describe("per-user usage limits", () => {
       payload: body,
     });
     expect(response.statusCode).toBe(429);
-    expect(response.json()).toEqual({ error: "Daily AI document limit reached" });
+    expect(response.json()).toEqual({ error: "Monthly AI document limit reached" });
+  });
+
+  it("reports this month's AI usage and allowance", async () => {
+    const response = await inject({ method: "GET", url: `/organizations/${session.organizationId}/usage` });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { aiDocuments: { used: number; limit: number; ownKeys: boolean; resetsAt: string } };
+    expect(body.aiDocuments).toMatchObject({ used: 0, limit: 0, ownKeys: false });
+    expect(new Date(body.aiDocuments.resetsAt).getUTCDate()).toBe(1);
   });
 
   it("allows the daily number of emails and refuses the next one", async () => {

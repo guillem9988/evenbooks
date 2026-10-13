@@ -30,6 +30,7 @@ import {
   useLoad,
 } from "@/components/ui-kit";
 import { useT } from "@/i18n";
+import { getLocale } from "@/i18n/core";
 import { api, apiPath, getCustomApiUrl, setCustomApiUrl } from "@/lib/api";
 
 interface ExtractorSettingsPayload {
@@ -669,6 +670,7 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-6">
           {tab === "ai" ? (
             <>
+                  <AiUsageCard organizationId={organizationId} />
               {/* Card 1: Mode d'extracció */}
               <Card>
                 <CardHeader>
@@ -1405,5 +1407,69 @@ export default function SettingsPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+interface UsagePayload {
+  aiDocuments: { used: number; limit: number; ownKeys: boolean; resetsAt: string };
+}
+
+/** This month's AI readings against the free allowance, or a note that the organization's own key has no limit. */
+function AiUsageCard({ organizationId }: { organizationId: string }) {
+  const t = useT();
+  const [usage, setUsage] = useState<UsagePayload["aiDocuments"] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<UsagePayload>(`/organizations/${organizationId}/usage`)
+      .then((body) => {
+        if (!cancelled) setUsage(body.aiDocuments);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
+  if (usage === null) return null;
+  const percent = usage.limit > 0 ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 100;
+  const resets = new Intl.DateTimeFormat(getLocale(), { day: "numeric", month: "long" }).format(new Date(usage.resetsAt));
+
+  return (
+    <Card size="sm">
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <SparklesIcon className="size-4 text-primary" aria-hidden />
+            {t("settings.usageTitle")}
+          </p>
+          {usage.ownKeys ? null : (
+            <p className="text-sm tabular-nums">
+              <span className="text-xl font-semibold">{usage.used}</span>{" "}
+              <span className="text-muted-foreground">{t("settings.usageCount", { used: "", limit: usage.limit }).trim()}</span>
+            </p>
+          )}
+        </div>
+        {usage.ownKeys ? (
+          <p className="text-sm text-muted-foreground">{t("settings.usageOwnKeys")}</p>
+        ) : (
+          <>
+            <div
+              className="h-2 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={usage.limit}
+              aria-valuenow={usage.used}
+              aria-label={t("settings.usageTitle")}
+            >
+              <div className={`h-full rounded-full ${percent >= 100 ? "bg-destructive" : percent >= 80 ? "bg-amber-500" : "bg-primary"}`} style={{ width: `${percent}%` }} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("settings.usageHint", { limit: usage.limit })} {t("settings.usageResets", { date: resets })}
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
