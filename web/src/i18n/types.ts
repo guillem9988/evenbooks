@@ -838,6 +838,11 @@ export type Dict = {
     removeFile: string;
   };
   settings: {
+    usageTitle: string;
+    usageCount: string;
+    usageResets: string;
+    usageOwnKeys: string;
+    usageHint: string;
     tabAi: string;
     tabAccount: string;
     tabAdvanced: string;

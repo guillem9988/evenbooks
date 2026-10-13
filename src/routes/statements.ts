@@ -3,11 +3,11 @@ import { IssuedInvoiceStatus, type PrismaClient } from "../../generated/prisma/c
 import { StatementFileError } from "../statements/parse-csv.js";
 import { parseStatementFile, statementExtension } from "../statements/parse-statement.js";
 import { isEmailVerified } from "../auth/verification.js";
-import { consumeQuota } from "../lib/quota.js";
+import { consumeQuota, monthStart } from "../lib/quota.js";
 
 const ORGANIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClient, aiDocumentsPerDay = 30): void {
+export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClient, aiDocumentsPerMonth = 20): void {
   app.post("/organizations/:organizationId/statements", async (request, reply) => {
     const { organizationId } = request.params as { organizationId: string };
     if (!ORGANIZATION_ID.test(organizationId)) {
@@ -41,13 +41,13 @@ export function registerStatementRoutes(app: FastifyInstance, prisma: PrismaClie
     }
 
     // PDF statements are read by the AI with the server's key unless the organization has its own:
-    // same verification and daily limit as uploaded invoices.
+    // same verification and monthly limit as uploaded invoices.
     if (statementExtension(file.filename) === "pdf" && !organization.geminiApiKey && request.userId !== undefined) {
       if (!(await isEmailVerified(prisma, request.userId))) {
         return reply.code(403).send({ error: "Email not verified" });
       }
-      if (!(await consumeQuota(prisma, request.userId, "ai_document", aiDocumentsPerDay))) {
-        return reply.code(429).send({ error: "Daily AI document limit reached" });
+      if (!(await consumeQuota(prisma, request.userId, "ai_document", aiDocumentsPerMonth, 1, monthStart()))) {
+        return reply.code(429).send({ error: "Monthly AI document limit reached" });
       }
     }
 

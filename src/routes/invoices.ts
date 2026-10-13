@@ -5,13 +5,13 @@ import { InvoiceStatus, MatchStatus, type PrismaClient } from "../../generated/p
 import type { S3Client } from "@aws-sdk/client-s3";
 import type { UsageLimits } from "../config.js";
 import { isEmailVerified } from "../auth/verification.js";
-import { consumeQuota } from "../lib/quota.js";
+import { consumeQuota, countUsage, monthStart, nextMonthStart } from "../lib/quota.js";
 import { deleteObject, getObject, putObject } from "../lib/storage.js";
 
 const ORGANIZATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED = new Set(["application/pdf", "image/png", "image/jpeg"]);
-const DEFAULT_LIMITS: UsageLimits = { aiDocumentsPerDay: 30, emailsPerDay: 20, organizationsPerUser: 3 };
+const DEFAULT_LIMITS: UsageLimits = { aiDocumentsPerMonth: 20, emailsPerDay: 20, organizationsPerUser: 3 };
 
 export function registerInvoiceRoutes(
   app: FastifyInstance,
@@ -21,16 +21,36 @@ export function registerInvoiceRoutes(
   queue: Queue,
   limits: UsageLimits = DEFAULT_LIMITS,
 ): void {
-  /** Reads with the server's AI keys count against the user's daily limit; an organization's own keys don't. */
-  const allowAiDocuments = async (userId: string | undefined, organizationId: string, amount: number) => {
+  const hasOwnKeys = async (organizationId: string) => {
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       select: { geminiApiKey: true, openaiApiKey: true, anthropicApiKey: true, deepseekApiKey: true, documentAiCredentialsJson: true },
     });
-    const ownKeys = Boolean(org?.geminiApiKey || org?.openaiApiKey || org?.anthropicApiKey || org?.deepseekApiKey || org?.documentAiCredentialsJson);
-    if (ownKeys || userId === undefined) return true;
-    return consumeQuota(prisma, userId, "ai_document", limits.aiDocumentsPerDay, amount);
+    return Boolean(org?.geminiApiKey || org?.openaiApiKey || org?.anthropicApiKey || org?.deepseekApiKey || org?.documentAiCredentialsJson);
   };
+
+  /** Reads with the server's AI keys count against the user's monthly allowance; an organization's own keys don't. */
+  const allowAiDocuments = async (userId: string | undefined, organizationId: string, amount: number) => {
+    if (userId === undefined || (await hasOwnKeys(organizationId))) return true;
+    return consumeQuota(prisma, userId, "ai_document", limits.aiDocumentsPerMonth, amount, monthStart());
+  };
+
+  /** How much of this month's AI allowance the signed-in person has used, for the settings page. */
+  app.get("/organizations/:organizationId/usage", async (request, reply) => {
+    const { organizationId } = request.params as { organizationId: string };
+    if (!ORGANIZATION_ID.test(organizationId)) {
+      return reply.code(400).send({ error: "organizationId must be a UUID" });
+    }
+    const used = request.userId === undefined ? 0 : await countUsage(prisma, request.userId, "ai_document", monthStart());
+    return reply.send({
+      aiDocuments: {
+        used,
+        limit: limits.aiDocumentsPerMonth,
+        ownKeys: await hasOwnKeys(organizationId),
+        resetsAt: nextMonthStart().toISOString(),
+      },
+    });
+  });
 
   app.post("/organizations/:organizationId/invoices", async (request, reply) => {
     const { organizationId } = request.params as { organizationId: string };
@@ -65,7 +85,7 @@ export function registerInvoiceRoutes(
       return reply.code(403).send({ error: "Email not verified" });
     }
     if (!(await allowAiDocuments(request.userId, organizationId, uploads.length))) {
-      return reply.code(429).send({ error: "Daily AI document limit reached" });
+      return reply.code(429).send({ error: "Monthly AI document limit reached" });
     }
 
     const invoiceIds: string[] = [];
@@ -111,7 +131,7 @@ export function registerInvoiceRoutes(
       return reply.code(403).send({ error: "Email not verified" });
     }
     if (!(await allowAiDocuments(request.userId, organizationId, 1))) {
-      return reply.code(429).send({ error: "Daily AI document limit reached" });
+      return reply.code(429).send({ error: "Monthly AI document limit reached" });
     }
 
     await prisma.invoice.update({
