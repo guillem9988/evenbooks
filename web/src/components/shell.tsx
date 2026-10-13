@@ -66,8 +66,8 @@ function Frame({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [organizationId]);
 
-  // Pages that must work whether or not the person is signed in: the emailed verification link and the privacy policy.
-  if (pathname === "/verifica" || pathname === "/privacitat" || pathname === "/restableix") {
+  // Pages that must work whether or not the person is signed in: the emailed links and the legal pages.
+  if (pathname === "/verifica" || pathname === "/privacitat" || pathname === "/condicions" || pathname === "/restableix") {
     return <>{children}</>;
   }
 
@@ -222,9 +222,14 @@ function Account({ className }: { className?: string }) {
         <LanguageSwitcher className="h-8 min-w-0 flex-1 text-xs" />
         <ThemeSwitcher className="w-24 shrink-0" />
       </div>
-      <Link href="/privacitat" className="px-1 text-[11px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-        {t("common.privacy")}
-      </Link>
+      <div className="flex gap-3 px-1 text-[11px] text-muted-foreground">
+        <Link href="/privacitat" className="underline-offset-4 hover:text-foreground hover:underline">
+          {t("common.privacy")}
+        </Link>
+        <Link href="/condicions" className="underline-offset-4 hover:text-foreground hover:underline">
+          {t("common.terms")}
+        </Link>
+      </div>
       <div className="flex items-center gap-2">
         {avatarUrl ? (
           <img

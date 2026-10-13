@@ -2,6 +2,7 @@ import type { Dict } from "./types";
 
 export const ca: Dict = {
   common: {
+    terms: "Condicions d’ús",
     edit: "Edita",
     save: "Desa",
     amounts: "Imports",
@@ -155,6 +156,7 @@ export const ca: Dict = {
     zero: "Ha de ser més gran que 0.",
   },
   validation: {
+    acceptTerms: "Has d’acceptar les condicions d’ús i la política de privacitat.",
     email: "Escriu un correu vàlid.",
     passwordMin: "Mínim 8 caràcters.",
     displayName: "Escriu el teu nom.",
@@ -203,8 +205,10 @@ export const ca: Dict = {
     cannotDeleteConvertedQuote: "No es pot eliminar un pressupost ja facturat.",
   },
   auth: {
-    privacyConsent: "En crear el compte acceptes la",
-    privacyInfo: "Com tractem les teves dades:",
+    acceptTermsPrefix: "Accepto les",
+    termsLink: "condicions d’ús",
+    and: "i la",
+    googleConsent: "En continuar, també amb Google, acceptes les",
     privacyLink: "política de privacitat",
     points: [
       "Factures, pressupostos i sèries amb PDF",
@@ -720,7 +724,7 @@ export const ca: Dict = {
     title: "Impostos",
     description: "Previsió del 303 (IVA) i el 130 (IRPF) amb les factures del trimestre.",
     loadFailed: "No s’ha pogut carregar la previsió",
-    disclaimer: "Orientatiu. No és una presentació a l’AEAT; revisa-ho amb la gestoria.",
+    disclaimer: "Previsió orientativa, no és assessorament fiscal ni una presentació a l’AEAT. Revisa-ho amb la gestoria abans de presentar res.",
     model303due: "Model 303 · a ingressar",
     model303credit: "Model 303 · a compensar",
     model303hint: "IVA repercutit menys suportat",
